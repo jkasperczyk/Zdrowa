@@ -557,7 +557,8 @@
         <a href="/trends/"     class="{% if '/trends'     in request.path %}active{% endif %}">Trendy</a>
         <a href="/settings/"   class="{% if '/settings'   in request.path %}active{% endif %}">Ustawienia</a>
         {% if request.user.is_staff %}
-          <a href="/admin-tools/" class="{% if '/admin-tools' in request.path %}active{% endif %}">Admin<span class="pill">tools</span></a>
+          <a href="/admin-tools/" class="{% if '/admin-tools' in request.path and '/admin-tools/system' not in request.path %}active{% endif %}">Admin<span class="pill">users</span></a>
+          <a href="/admin-tools/system/" class="{% if '/admin-tools/system' in request.path %}active{% endif %}">Admin<span class="pill">system</span></a>
         {% endif %}
       {% endif %}
     </nav>

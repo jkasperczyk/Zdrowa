@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Any
 from django.conf import settings
@@ -17,7 +18,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 
 from .models import UserProfile, DailyWellbeing
-from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user, dashboard_summary
+from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user, dashboard_summary, db_stats, all_users_latest_scores, users_last_scores, recent_alerts_all, batch_recent_alerts
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
 
@@ -230,10 +231,53 @@ def admin_tools(request: HttpRequest) -> HttpResponse:
             "phone": getattr(prof, "phone_e164", ""),
             "alerts": getattr(prof, "enabled_alerts", []) if prof else [],
             "sms_enabled": bool(getattr(prof, "sms_enabled", True)) if prof else True,
+            "location": getattr(prof, "location", "") if prof else "",
+            "threshold": getattr(prof, "alert_threshold", None) if prof else None,
+            "last_login": u.last_login,
+            "recent_alerts": [],
         })
+
+    # Fetch last scores + recent alert history from feedback.db (batch queries)
+    phones = [r["phone"] for r in users_rows if r["phone"]]
+    last_scores = users_last_scores(settings.WEATHERGUARD_DB, phones) if phones else {}
+    recent_hist = batch_recent_alerts(settings.WEATHERGUARD_DB, phones, days=7, limit_per_user=5) if phones else {}
+    for r in users_rows:
+        ls = last_scores.get(r["phone"], {})
+        r["last_score"] = ls.get("score")
+        r["last_score_dt"] = ls.get("dt")
+        r["last_score_tier"] = ls.get("tier", "")
+        r["last_score_profile"] = ls.get("profile", "")
+        r["recent_alerts"] = recent_hist.get(r["phone"], [])
 
     if request.method == "POST":
         action = request.POST.get("action")
+
+        if action == "bulk_enable" or action == "bulk_disable":
+            ids = [int(x) for x in request.POST.getlist("selected_users") if x.isdigit()]
+            enable = (action == "bulk_enable")
+            cnt = 0
+            for uid in ids:
+                try:
+                    target = User.objects.get(id=uid, is_staff=False)
+                    target.is_active = enable
+                    target.save(update_fields=["is_active"])
+                    cnt += 1
+                    # sync to wg_users
+                    tprof = getattr(target, "profile", None)
+                    if tprof and tprof.phone_e164:
+                        write_wg_user(
+                            settings.WEATHERGUARD_DB,
+                            phone=tprof.phone_e164,
+                            profiles=getattr(tprof, "enabled_alerts", None) or ["migraine"],
+                            location=getattr(tprof, "location", ""),
+                            threshold=getattr(tprof, "alert_threshold", None),
+                            quiet_hours=getattr(tprof, "quiet_hours", None) or None,
+                            enabled=enable,
+                        )
+                except Exception:
+                    pass
+            messages.success(request, f"{'Odblokowano' if enable else 'Zablokowano'}: {cnt} użytkowników.")
+            return redirect("admin_tools")
 
         if action == "reset_password":
             uid = int(request.POST.get("user_id") or "0")
@@ -468,3 +512,104 @@ def admin_user_edit(request: HttpRequest, user_id: int) -> HttpResponse:
         })
 
     return render(request, "portal/admin_user_edit.html", {"target": u, "form": form})
+
+
+def _read_log_tail(log_path: str, lines: int = 80) -> str:
+    """Read last N lines of the weatherguard log file."""
+    try:
+        if not os.path.exists(log_path):
+            return f"(brak pliku logu: {log_path})"
+        with open(log_path, "rb") as f:
+            f.seek(0, 2)
+            size = f.tell()
+            chunk = min(size, 32768)
+            f.seek(max(0, size - chunk))
+            data = f.read().decode("utf-8", errors="replace")
+        return "\n".join(data.splitlines()[-lines:])
+    except Exception as e:
+        return f"(błąd odczytu logu: {e})"
+
+
+def _systemd_status() -> Dict[str, Any]:
+    """Read systemd timer and service status."""
+    result: Dict[str, Any] = {"available": False, "timer": {}, "service": {}, "error": ""}
+    props_wanted = (
+        "ActiveState,SubState,ActiveEnterTimestamp,InactiveEnterTimestamp,"
+        "NextElapseUSecRealtime,LastTriggerUSec,ExecMainStatus,MainPID"
+    )
+    try:
+        for key, unit in [("timer", "weatherguard.timer"), ("service", "weatherguard.service")]:
+            r = subprocess.run(
+                ["systemctl", "show", unit, "--no-pager", f"--property={props_wanted}"],
+                capture_output=True, text=True, timeout=5
+            )
+            props: Dict[str, str] = {}
+            for line in r.stdout.splitlines():
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    props[k.strip()] = v.strip()
+            result[key] = props
+        result["available"] = True
+    except FileNotFoundError:
+        result["error"] = "systemctl nie jest dostępny w tym środowisku."
+    except Exception as e:
+        result["error"] = str(e)
+    return result
+
+
+@user_passes_test(_is_staff)
+def admin_system(request: HttpRequest) -> HttpResponse:
+    run_output = None
+    run_error = None
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        wg_base = getattr(settings, "WEATHERGUARD_BASE_DIR", "/opt/weatherguard")
+        wg_python = f"{wg_base}/venv/bin/python"
+        wg_env = f"{wg_base}/config/.env"
+
+        if action == "run_dry":
+            try:
+                r = subprocess.run(
+                    [wg_python, "-m", "app.runner", "--dry-run", "--env", wg_env],
+                    capture_output=True, text=True, timeout=90, cwd=wg_base,
+                )
+                run_output = (r.stdout + "\n" + r.stderr).strip()
+                if r.returncode != 0:
+                    run_error = f"Exit code: {r.returncode}"
+            except subprocess.TimeoutExpired:
+                run_error = "Timeout (90s) — runner działa zbyt długo."
+            except Exception as e:
+                run_error = str(e)
+
+        elif action == "run_real":
+            try:
+                r = subprocess.run(
+                    ["sudo", "-n", "systemctl", "start", "weatherguard.service"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                if r.returncode == 0:
+                    run_output = "✓ Zlecono: systemctl start weatherguard.service"
+                else:
+                    run_error = (r.stderr or r.stdout or f"Exit code: {r.returncode}").strip()
+            except Exception as e:
+                run_error = str(e)
+
+        messages.success(request, "Dry-run zakończony.") if (run_output and not run_error) else None
+        if run_error:
+            messages.error(request, f"Błąd: {run_error}")
+
+    db_path = settings.WEATHERGUARD_DB
+    log_path = getattr(settings, "WEATHERGUARD_LOG", "/opt/weatherguard/logs/weatherguard.log")
+
+    return render(request, "portal/admin_system.html", {
+        "systemd": _systemd_status(),
+        "stats": db_stats(db_path),
+        "all_scores": all_users_latest_scores(db_path),
+        "recent_alerts": recent_alerts_all(db_path, hours=24, limit=100),
+        "log_tail": _read_log_tail(log_path, lines=80),
+        "run_output": run_output,
+        "run_error": run_error,
+        "db_path": db_path,
+        "log_path": log_path,
+    })

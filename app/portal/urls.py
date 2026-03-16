@@ -15,4 +15,5 @@ urlpatterns = [
 
     path("admin-tools/", views.admin_tools, name="admin_tools"),
     path("admin-tools/user/<int:user_id>/", views.admin_user_edit, name="admin_user_edit"),
+    path("admin-tools/system/", views.admin_system, name="admin_system"),
 ]

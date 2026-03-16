@@ -117,3 +117,6 @@ EMAIL_USE_TLS = env("EMAIL_USE_TLS", "1") == "1"
 EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "no-reply@zdrowa.pracunia.pl")
+
+WEATHERGUARD_LOG = env("WG_LOG_FILE", "/opt/weatherguard/logs/weatherguard.log")
+WEATHERGUARD_BASE_DIR = env("WG_BASE_DIR", "/opt/weatherguard")

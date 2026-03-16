@@ -1,99 +1,188 @@
 {% extends "portal/base.html" %}
+{% block extra_css %}
+.user-table th { cursor: default; }
+.bulk-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.score-pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+.score-pill.green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,217,160,.2); }
+.score-pill.amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,166,35,.2); }
+.score-pill.red   { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,92,92,.2); }
+.history-row td { background: rgba(0,0,0,.25) !important; }
+.history-inner { padding: 10px 0 6px; }
+.history-inner table { font-size: .78rem; }
+{% endblock %}
 {% block content %}
 <div class="stack">
+
+  {# ── Header ── #}
   <div class="flex-between">
     <div>
       <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Zarządzanie użytkownikami</h1>
       <p class="muted small">Reset hasła → tymczasowe hasło + wymuszona zmiana przy następnym logowaniu.</p>
     </div>
+    <div class="actions">
+      <a href="{% url 'admin_system' %}" class="btn secondary sm">Status systemu →</a>
+    </div>
   </div>
 
+  {# ── Search ── #}
   <div class="card">
-    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
-      <div style="flex:1;min-width:260px">
+    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <div style="flex:1;min-width:220px">
         <label>Wyszukaj</label>
         <input name="q" value="{{ q }}" placeholder="login / e-mail / telefon / imię / nazwisko">
       </div>
       <div>
         <button class="btn" type="submit">Szukaj</button>
-        <a class="btn secondary" href="/admin-tools/">Wyczyść</a>
+        <a class="btn secondary" href="{% url 'admin_tools' %}">Wyczyść</a>
       </div>
     </form>
   </div>
 
+  {# ── User table with bulk actions ── #}
   <div class="card">
-    <h3>Lista użytkowników</h3>
-    {% if users_rows %}
-      <div class="table-wrap" style="margin-top:12px">
-      <table>
-        <thead>
-          <tr>
-            <th>Login</th>
-            <th>Dane</th>
-            <th>Alerty</th>
-            <th>Status</th>
-            <th>Akcje</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for u in users_rows %}
+    <form method="post" id="users-form">
+      {% csrf_token %}
+
+      <div class="flex-between" style="margin-bottom:12px">
+        <h3 style="margin:0">Lista użytkowników <span class="pill">{{ users_rows|length }}</span></h3>
+        <div class="bulk-bar">
+          <label class="small muted" style="cursor:pointer;display:flex;gap:6px;align-items:center">
+            <input type="checkbox" id="select-all" onclick="toggleAll(this)"> zaznacz wszystkich
+          </label>
+          <select name="action" style="max-width:180px">
+            <option value="">— akcja grupowa —</option>
+            <option value="bulk_enable">Odblokuj zaznaczonych</option>
+            <option value="bulk_disable">Zablokuj zaznaczonych</option>
+          </select>
+          <button class="btn sm secondary" type="submit"
+                  onclick="return document.querySelectorAll('[name=selected_users]:checked').length > 0 || (alert('Zaznacz użytkowników.'), false)">
+            Wykonaj
+          </button>
+        </div>
+      </div>
+
+      {% if users_rows %}
+        <div class="table-wrap">
+        <table class="user-table">
+          <thead>
             <tr>
-              <td><b>{{ u.username }}</b><br><span class="muted small">{{ u.email }}</span></td>
-              <td class="small">
-                <div>{{ u.name|default:"(brak)" }}</div>
-                <div class="muted">tel: {{ u.phone|default:"-" }}</div>
-              </td>
-              <td class="small">
-                {% if u.alerts %}
-                  {% for a in u.alerts %}<span class="badge">{{ a }}</span>{% endfor %}
-                {% else %}
-                  <span class="muted">—</span>
-                {% endif %}
-              </td>
-              <td class="small">
-                {% if u.active %}<span class="badge">AKTYWNY</span>{% else %}<span class="badge">ZABLOKOWANY</span>{% endif %}
-                {% if u.sms_enabled %}<span class="badge">SMS:ON</span>{% else %}<span class="badge">SMS:OFF</span>{% endif %}
-              </td>
-              <td>
-                <div class="actions">
-                  <a class="btn" href="/admin-tools/user/{{ u.id }}/">Modyfikuj</a>
+              <th style="width:32px"></th>
+              <th>Login / E-mail</th>
+              <th>Imię / Telefon</th>
+              <th>Lokalizacja</th>
+              <th>Profile alertów</th>
+              <th>Próg</th>
+              <th>Ostatni wynik</th>
+              <th>Ostatnie logowanie</th>
+              <th>Status</th>
+              <th>Akcje</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users_rows %}
+              <tr id="user-row-{{ u.id }}">
+                <td><input type="checkbox" name="selected_users" value="{{ u.id }}"></td>
+                <td>
+                  <div><b>{{ u.username }}</b></div>
+                  <div class="muted small">{{ u.email }}</div>
+                </td>
+                <td class="small">
+                  <div>{{ u.name|default:"(brak)" }}</div>
+                  <div class="mono muted">{{ u.phone|default:"—" }}</div>
+                </td>
+                <td class="small muted">{{ u.location|default:"—" }}</td>
+                <td class="small">
+                  {% if u.alerts %}
+                    {% for a in u.alerts %}<span class="badge" style="margin-right:2px">{{ a }}</span>{% endfor %}
+                  {% else %}
+                    <span class="dim">—</span>
+                  {% endif %}
+                </td>
+                <td class="small muted">{{ u.threshold|default:"sys." }}</td>
+                <td>
+                  {% if u.last_score is not None %}
+                    <span class="score-pill {{ u.last_score_tier }}">{{ u.last_score }}</span>
+                    <div class="dim" style="font-size:.7rem;margin-top:2px">{{ u.last_score_profile }}</div>
+                    <div class="dim" style="font-size:.68rem">{{ u.last_score_dt }}</div>
+                  {% else %}
+                    <span class="dim small">—</span>
+                  {% endif %}
+                </td>
+                <td class="small muted">{{ u.last_login|date:"Y-m-d H:i"|default:"nigdy" }}</td>
+                <td class="small">
+                  {% if u.active %}<span class="badge green">aktywny</span>{% else %}<span class="badge red">zablokowany</span>{% endif %}
+                  {% if u.sms_enabled %}<span class="badge blue">SMS</span>{% else %}<span class="badge">SMS:off</span>{% endif %}
+                </td>
+                <td>
+                  <div class="actions" style="flex-wrap:wrap;gap:5px">
+                    <a class="btn sm" href="/admin-tools/user/{{ u.id }}/">Edytuj</a>
 
-                  <form method="post" style="display:inline">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="reset_password">
-                    <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <button class="btn" type="submit">RESET HASŁA</button>
-                  </form>
+                    <button class="btn sm secondary" type="button"
+                            onclick="toggleHistory('hist-{{ u.id }}', this)">Historia</button>
 
-                  <form method="post" style="display:inline">
+                    <button class="btn sm secondary" type="submit" name="action" value="reset_password"
+                            onclick="document.getElementById('uid-reset-{{ u.id }}').value='{{ u.id }}'">
+                      Reset hasła
+                    </button>
+                    <input type="hidden" id="uid-reset-{{ u.id }}" name="user_id" value="">
+                  </div>
+                  {# Quick toggle active #}
+                  <form method="post" style="margin-top:4px">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="toggle_active">
                     <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <button class="btn secondary" type="submit">{% if u.active %}Zablokuj{% else %}Odblokuj{% endif %}</button>
+                    <button class="btn xs {% if u.active %}danger{% else %}ghost{% endif %}" type="submit">
+                      {% if u.active %}Zablokuj{% else %}Odblokuj{% endif %}
+                    </button>
                   </form>
-
-                  <form method="post" style="display:inline">
+                  {# Delete #}
+                  <form method="post" style="margin-top:4px;display:flex;gap:5px;align-items:center">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="user_id" value="{{ u.id }}">
-                    <label class="small" style="display:flex;gap:6px;align-items:center;margin:0">
-                      {{ delete_form.confirm_delete }} usuń
+                    <label class="small dim" style="display:flex;gap:4px;align-items:center;margin:0;cursor:pointer">
+                      <input type="checkbox" name="confirm_delete"> usuń
                     </label>
-                    <button class="btn danger" type="submit">Skasuj</button>
+                    <button class="btn xs danger" type="submit">✕</button>
                   </form>
-                </div>
-                <div class="muted small" style="margin-top:6px">Reset pokaże hasło tymczasowe adminowi i wymusi zmianę po logowaniu.</div>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      </div>
-    {% else %}
-      <p class="muted" style="margin-top:8px">Brak wyników.</p>
-    {% endif %}
+                </td>
+              </tr>
+              {# Inline history row (hidden) #}
+              <tr id="hist-{{ u.id }}" class="history-row" style="display:none">
+                <td colspan="10">
+                  <div class="history-inner" style="padding:12px 16px">
+                    {% if u.recent_alerts %}
+                      <p class="section-title" style="margin:0 0 8px">Ostatnie alerty (7 dni)</p>
+                      <table>
+                        <thead><tr><th>Czas</th><th>Profil</th><th>Score</th><th>Etykieta</th></tr></thead>
+                        <tbody>
+                          {% for a in u.recent_alerts %}
+                            <tr>
+                              <td class="mono small muted">{{ a.dt }}</td>
+                              <td><span class="badge">{{ a.profile|default:"—" }}</span></td>
+                              <td><b>{{ a.score }}</b></td>
+                              <td class="small muted">{{ a.label|default:"—" }}</td>
+                            </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    {% else %}
+                      <p class="muted small">Brak alertów w ostatnich 7 dniach.</p>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="muted" style="margin-top:8px">Brak wyników.</p>
+      {% endif %}
+    </form>
   </div>
 
+  {# ── Create + Import ── #}
   <div class="row">
     <div class="card">
       <h3 style="margin-bottom:16px">Dodaj użytkownika</h3>
@@ -121,4 +210,18 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+function toggleAll(cb) {
+  document.querySelectorAll('[name=selected_users]').forEach(function(el) { el.checked = cb.checked; });
+}
+function toggleHistory(id, btn) {
+  var row = document.getElementById(id);
+  if (!row) return;
+  var hidden = row.style.display === 'none';
+  row.style.display = hidden ? '' : 'none';
+  btn.textContent = hidden ? 'Ukryj' : 'Historia';
+}
+</script>
 {% endblock %}

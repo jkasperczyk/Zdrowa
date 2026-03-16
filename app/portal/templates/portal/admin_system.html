@@ -1,0 +1,195 @@
+{% extends "portal/base.html" %}
+{% block extra_css %}
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+.stat-card { text-align: center; padding: 20px 16px; }
+.stat-big { font-size: 2.2rem; font-weight: 900; letter-spacing: -.04em; line-height: 1; margin: 6px 0 2px; }
+.stat-label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.log-box {
+  font-family: var(--mono); font-size: .75rem; line-height: 1.5;
+  color: var(--text-2); background: rgba(0,0,0,.45);
+  border: 1px solid rgba(255,255,255,.07); border-radius: var(--r-sm);
+  padding: 14px 16px; overflow: auto; max-height: 400px;
+  white-space: pre-wrap; word-break: break-all;
+}
+.sys-row { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+.sys-row:last-child { border-bottom: none; }
+.sys-key { font-size: .78rem; color: var(--muted); width: 200px; flex-shrink: 0; }
+.sys-val { font-size: .85rem; color: var(--text-2); font-family: var(--mono); word-break: break-all; }
+.score-pill { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+.score-pill.green { background: var(--green-dim); color: var(--green); }
+.score-pill.amber { background: var(--amber-dim); color: var(--amber); }
+.score-pill.red   { background: var(--red-dim);   color: var(--red); }
+{% endblock %}
+{% block content %}
+<div class="stack">
+
+  {# ── Header ── #}
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Status systemu</h1>
+      <p class="muted small">Panel administracyjny Health_Guard · tylko dla personelu</p>
+    </div>
+    <div class="actions">
+      <a href="{% url 'admin_tools' %}" class="btn secondary sm">← Użytkownicy</a>
+    </div>
+  </div>
+
+  {# ── DB stats ── #}
+  <div>
+    <p class="section-title">Statystyki bazy danych</p>
+    <div class="stat-grid">
+      <div class="card stat-card">
+        <div class="stat-label">Alerty (24h)</div>
+        <div class="stat-big" style="color:{% if stats.alerts_24h > 0 %}var(--accent-h){% else %}var(--dim){% endif %}">{{ stats.alerts_24h }}</div>
+        <div class="card-sub">z {{ stats.total_alerts }} łącznie</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Odczyty (24h)</div>
+        <div class="stat-big" style="color:var(--text-2)">{{ stats.readings_24h }}</div>
+        <div class="card-sub">z {{ stats.total_readings }} łącznie</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Użytkownicy WG</div>
+        <div class="stat-big" style="color:var(--green)">{{ stats.total_wg_users }}</div>
+        <div class="card-sub">SMS: {{ stats.total_sms_users }}</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Rozmiar DB</div>
+        <div class="stat-big" style="color:var(--text-2)">{{ stats.db_size_mb }}</div>
+        <div class="card-sub">MB · {% if stats.db_exists %}dostępna{% else %}<span style="color:var(--red)">brak pliku</span>{% endif %}</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Ostatni alert</div>
+        <div style="font-size:.8rem;font-weight:600;margin-top:8px;color:var(--text-2)">{{ stats.last_alert_ts|default:"—" }}</div>
+      </div>
+      <div class="card stat-card">
+        <div class="stat-label">Ostatni odczyt</div>
+        <div style="font-size:.8rem;font-weight:600;margin-top:8px;color:var(--text-2)">{{ stats.last_reading_ts|default:"—" }}</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Systemd status + Run controls ── #}
+  <div class="row">
+    <div class="card">
+      <p class="section-title" style="margin-top:0">Systemd · weatherguard.timer</p>
+      {% if systemd.available %}
+        {% with t=systemd.timer %}
+        <div class="sys-row">
+          <span class="sys-key">Stan</span>
+          <span class="sys-val">
+            {% if t.ActiveState == "active" %}<span class="badge green">{{ t.ActiveState }}</span>{% else %}<span class="badge">{{ t.ActiveState|default:"—" }}</span>{% endif %}
+            <span class="dim small">/ {{ t.SubState|default:"" }}</span>
+          </span>
+        </div>
+        <div class="sys-row"><span class="sys-key">Ostatni trigger</span><span class="sys-val">{{ t.LastTriggerUSec|default:"—" }}</span></div>
+        <div class="sys-row"><span class="sys-key">Następne uruchomienie</span><span class="sys-val">{{ t.NextElapseUSecRealtime|default:"—" }}</span></div>
+        {% endwith %}
+        <hr class="divider" style="margin:14px 0">
+        <p class="section-title" style="margin-top:0">Systemd · weatherguard.service</p>
+        {% with s=systemd.service %}
+        <div class="sys-row"><span class="sys-key">Stan aktywny</span><span class="sys-val">
+          {% if s.ActiveState == "active" %}<span class="badge green">{{ s.ActiveState }}</span>{% elif s.ActiveState == "failed" %}<span class="badge red">{{ s.ActiveState }}</span>{% else %}<span class="badge">{{ s.ActiveState|default:"—" }}</span>{% endif %}
+        </span></div>
+        <div class="sys-row"><span class="sys-key">Ostatni start</span><span class="sys-val">{{ s.ActiveEnterTimestamp|default:"—" }}</span></div>
+        <div class="sys-row"><span class="sys-key">Ostatnie zakończenie</span><span class="sys-val">{{ s.InactiveEnterTimestamp|default:"—" }}</span></div>
+        <div class="sys-row"><span class="sys-key">Exit code</span><span class="sys-val">{{ s.ExecMainStatus|default:"—" }}</span></div>
+        {% endwith %}
+      {% else %}
+        <p class="muted">systemctl niedostępny: {{ systemd.error }}</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <p class="section-title" style="margin-top:0">Uruchom ręcznie</p>
+      <p class="muted small" style="margin-bottom:16px">
+        <b>Dry run</b> wykonuje pełny cykl obliczania ryzyka bez wysyłania SMS.<br>
+        <b>Run real</b> uruchamia usługę systemd (wymaga <code>sudo</code> bez hasła dla www-data).
+      </p>
+      <form method="post" style="margin-bottom:12px">
+        {% csrf_token %}
+        <button class="btn" name="action" value="run_dry" type="submit">▶ Dry Run (bez SMS)</button>
+      </form>
+      <form method="post">
+        {% csrf_token %}
+        <button class="btn danger" name="action" value="run_real" type="submit"
+                onclick="return confirm('Uruchomić prawdziwy cykl? Wyśle SMS do użytkowników.')">
+          ⚡ Run Real (wysyła SMS)
+        </button>
+      </form>
+
+      {% if run_output %}
+        <div style="margin-top:16px">
+          <p class="section-title" style="margin-top:0">Wynik</p>
+          <div class="log-box" style="max-height:200px">{{ run_output }}</div>
+        </div>
+      {% endif %}
+
+      <hr class="divider" style="margin:16px 0 12px">
+      <p class="section-title" style="margin-top:0">Ścieżki</p>
+      <div class="sys-row"><span class="sys-key">feedback.db</span><span class="sys-val small">{{ db_path }}</span></div>
+      <div class="sys-row"><span class="sys-key">Log</span><span class="sys-val small">{{ log_path }}</span></div>
+    </div>
+  </div>
+
+  {# ── Last scores per user ── #}
+  {% if all_scores %}
+  <div class="card">
+    <p class="section-title" style="margin-top:0">Ostatnie wyniki ryzyka (wszyscy użytkownicy)</p>
+    <div class="table-wrap" style="margin-top:8px">
+      <table>
+        <thead><tr><th>Telefon</th><th>Profil</th><th>Score</th><th>Etykieta</th><th>Czas</th></tr></thead>
+        <tbody>
+          {% for phone, scores in all_scores.items %}
+            {% for s in scores %}
+              <tr>
+                {% if forloop.first %}<td class="mono small" rowspan="{{ scores|length }}" style="vertical-align:top;color:var(--muted)">{{ phone }}</td>{% endif %}
+                <td><span class="badge">{{ s.profile }}</span></td>
+                <td><span class="score-pill {{ s.tier }}">{{ s.score }}</span></td>
+                <td class="small muted">{{ s.label|default:"—" }}</td>
+                <td class="small mono muted">{{ s.dt|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Recent alerts (24h) ── #}
+  <div class="card">
+    <p class="section-title" style="margin-top:0">Alerty ostatnie 24h ({{ recent_alerts|length }})</p>
+    {% if recent_alerts %}
+      <div class="table-wrap" style="margin-top:8px">
+        <table>
+          <thead><tr><th>Czas</th><th>Telefon</th><th>Profil</th><th>Score</th><th>Etykieta</th></tr></thead>
+          <tbody>
+            {% for a in recent_alerts %}
+              <tr>
+                <td class="mono small muted">{{ a.dt }}</td>
+                <td class="mono small">{{ a.phone }}</td>
+                <td><span class="badge">{{ a.profile|default:"—" }}</span></td>
+                <td><b>{{ a.score|default:"—" }}</b></td>
+                <td class="small muted">{{ a.label|default:"—" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="muted" style="margin-top:8px">Brak alertów w ciągu ostatnich 24 godzin.</p>
+    {% endif %}
+  </div>
+
+  {# ── Log tail ── #}
+  <div class="card">
+    <div class="flex-between" style="margin-bottom:10px">
+      <p class="section-title" style="margin:0">Log WeatherGuard (ostatnie 80 linii)</p>
+      <span class="dim small mono">{{ log_path }}</span>
+    </div>
+    <div class="log-box">{{ log_tail }}</div>
+  </div>
+
+</div>
+{% endblock %}

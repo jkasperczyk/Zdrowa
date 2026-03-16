@@ -390,3 +390,189 @@ def last_readings(db_path: str, phone: str, profile: str, limit: int = 80):
         return out
     except Exception:
         return []
+
+
+def db_stats(db_path: str) -> Dict[str, Any]:
+    """Aggregate stats from feedback.db for admin panel."""
+    out: Dict[str, Any] = {
+        "total_alerts": 0, "total_readings": 0,
+        "total_wg_users": 0, "total_sms_users": 0,
+        "alerts_24h": 0, "readings_24h": 0,
+        "last_alert_ts": None, "last_reading_ts": None,
+        "db_size_mb": 0.0, "db_exists": False,
+    }
+    if not os.path.exists(db_path):
+        return out
+    out["db_exists"] = True
+    try:
+        out["db_size_mb"] = round(os.path.getsize(db_path) / 1024 / 1024, 2)
+    except Exception:
+        pass
+    since_24h = int((datetime.now(tz=timezone.utc) - timedelta(hours=24)).timestamp())
+    c = _connect_feedback(db_path)
+    try:
+        if _table_exists(c, "alerts"):
+            out["total_alerts"] = c.execute("SELECT COUNT(*) FROM alerts").fetchone()[0]
+            out["alerts_24h"] = c.execute("SELECT COUNT(*) FROM alerts WHERE ts>=?", (since_24h,)).fetchone()[0]
+            row = c.execute("SELECT MAX(ts) FROM alerts").fetchone()
+            if row and row[0]:
+                out["last_alert_ts"] = _utc_dt(row[0])
+        if _table_exists(c, "readings"):
+            out["total_readings"] = c.execute("SELECT COUNT(*) FROM readings").fetchone()[0]
+            out["readings_24h"] = c.execute("SELECT COUNT(*) FROM readings WHERE ts>=?", (since_24h,)).fetchone()[0]
+            row = c.execute("SELECT MAX(ts) FROM readings").fetchone()
+            if row and row[0]:
+                out["last_reading_ts"] = _utc_dt(row[0])
+        if _table_exists(c, "wg_users"):
+            out["total_wg_users"] = c.execute("SELECT COUNT(*) FROM wg_users").fetchone()[0]
+        if _table_exists(c, "sms_users"):
+            out["total_sms_users"] = c.execute("SELECT COUNT(*) FROM sms_users").fetchone()[0]
+    except Exception:
+        pass
+    finally:
+        c.close()
+    return out
+
+
+def all_users_latest_scores(db_path: str) -> Dict[str, List[Dict[str, Any]]]:
+    """Most recent reading per (phone, profile). Returns {phone: [{profile, score, label, dt, tier}]}"""
+    if not os.path.exists(db_path):
+        return {}
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "readings"):
+            return {}
+        cols = set(_cols(c, "readings"))
+        has_label = "label" in cols
+        sel = ["phone", "profile", "ts", "score", "threshold"] + (["label"] if has_label else [])
+        q = f"""
+            SELECT {', '.join(sel)} FROM readings r
+            WHERE ts = (SELECT MAX(ts) FROM readings WHERE phone=r.phone AND profile=r.profile)
+            ORDER BY phone, profile
+        """
+        rows = c.execute(q).fetchall()
+        result: Dict[str, List] = {}
+        for row in rows:
+            d = {k: row[k] for k in sel if k in row.keys()}
+            score = d.get("score") or 0
+            th = d.get("threshold") or 60
+            tier = "red" if score >= th else ("amber" if score >= int(th * 0.6) else "green")
+            phone = d["phone"]
+            if phone not in result:
+                result[phone] = []
+            result[phone].append({
+                "profile": d.get("profile", ""),
+                "score": score,
+                "label": d.get("label", ""),
+                "ts": d.get("ts", 0),
+                "dt": _utc_dt(d["ts"]) if d.get("ts") else None,
+                "tier": tier,
+            })
+        return result
+    except Exception:
+        return {}
+    finally:
+        c.close()
+
+
+def users_last_scores(db_path: str, phones: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Most recent reading per phone (any profile). Returns {phone: {score, profile, dt, tier}}"""
+    if not os.path.exists(db_path) or not phones:
+        return {}
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "readings"):
+            return {}
+        cols = set(_cols(c, "readings"))
+        has_profile = "profile" in cols
+        result: Dict[str, Dict] = {}
+        for phone in phones:
+            if has_profile:
+                row = c.execute(
+                    "SELECT score, profile, ts, threshold FROM readings WHERE phone=? ORDER BY ts DESC LIMIT 1",
+                    (phone,)
+                ).fetchone()
+            else:
+                row = c.execute(
+                    "SELECT score, ts, threshold FROM readings WHERE phone=? ORDER BY ts DESC LIMIT 1",
+                    (phone,)
+                ).fetchone()
+            if row:
+                score = row["score"] or 0
+                th = row["threshold"] or 60
+                tier = "red" if score >= th else ("amber" if score >= int(th * 0.6) else "green")
+                result[phone] = {
+                    "score": score,
+                    "profile": row["profile"] if has_profile else "",
+                    "dt": _utc_dt(row["ts"]) if row["ts"] else None,
+                    "tier": tier,
+                }
+        return result
+    except Exception:
+        return {}
+    finally:
+        c.close()
+
+
+def recent_alerts_all(db_path: str, hours: int = 24, limit: int = 200) -> List[Dict[str, Any]]:
+    """Recent alerts across ALL users for admin overview."""
+    if not os.path.exists(db_path):
+        return []
+    since = int((datetime.now(tz=timezone.utc) - timedelta(hours=hours)).timestamp())
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "alerts"):
+            return []
+        cols = set(_cols(c, "alerts"))
+        sel = ["ts", "phone", "score"]
+        for k in ["profile", "label", "threshold"]:
+            if k in cols:
+                sel.append(k)
+        q = f"SELECT {', '.join(sel)} FROM alerts WHERE ts>=? ORDER BY ts DESC LIMIT ?"
+        rows = c.execute(q, (since, limit)).fetchall()
+        out = []
+        for r in rows:
+            d = {k: r[k] for k in sel if k in r.keys()}
+            d["dt"] = _utc_dt(d["ts"]) if d.get("ts") else ""
+            out.append(d)
+        return out
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+def batch_recent_alerts(db_path: str, phones: List[str], days: int = 7, limit_per_user: int = 5) -> Dict[str, List[Dict[str, Any]]]:
+    """Fetch recent alerts for multiple phones in a single query.
+    Returns {phone: [alert_dict, ...]} sorted newest-first, capped at limit_per_user."""
+    if not os.path.exists(db_path) or not phones:
+        return {}
+    since = int((datetime.now(tz=timezone.utc) - timedelta(days=days)).timestamp())
+    placeholders = ",".join("?" * len(phones))
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "alerts"):
+            return {}
+        cols = set(_cols(c, "alerts"))
+        sel = ["ts", "phone", "score"]
+        for k in ["profile", "label", "threshold"]:
+            if k in cols:
+                sel.append(k)
+        q = (
+            f"SELECT {', '.join(sel)} FROM alerts "
+            f"WHERE phone IN ({placeholders}) AND ts>=? "
+            "ORDER BY phone, ts DESC"
+        )
+        rows = c.execute(q, phones + [since]).fetchall()
+        result: Dict[str, List] = {p: [] for p in phones}
+        for r in rows:
+            d = {k: r[k] for k in sel if k in r.keys()}
+            d["dt"] = _utc_dt(d["ts"]) if d.get("ts") else ""
+            phone = d["phone"]
+            if phone in result and len(result[phone]) < limit_per_user:
+                result[phone].append(d)
+        return result
+    except Exception:
+        return {}
+    finally:
+        c.close()
