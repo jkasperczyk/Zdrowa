@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -613,3 +614,93 @@ def admin_system(request: HttpRequest) -> HttpResponse:
         "db_path": db_path,
         "log_path": log_path,
     })
+
+
+# ── PWA views ────────────────────────────────────────────────────────────────
+
+def pwa_manifest(request: HttpRequest) -> HttpResponse:
+    base = request.build_absolute_uri('/').rstrip('/')
+    icons_url = f"{base}/static/portal/icons"
+    manifest = {
+        "name": "Zdrowa",
+        "short_name": "Zdrowa",
+        "description": "Panel zdrowia – alerty pogodowe i samopoczucie",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#080f1d",
+        "theme_color": "#080f1d",
+        "orientation": "portrait-primary",
+        "icons": [
+            {"src": f"{icons_url}/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": f"{icons_url}/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": f"{icons_url}/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ],
+    }
+    return HttpResponse(
+        json.dumps(manifest, ensure_ascii=False),
+        content_type="application/manifest+json",
+    )
+
+
+def pwa_sw(request: HttpRequest) -> HttpResponse:
+    sw_js = r"""
+const CACHE = 'zdrowa-v1';
+const SHELL = [
+  '/',
+  '/static/portal/icons/icon-192.png',
+  '/offline/',
+];
+
+self.addEventListener('install', e => {
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // Skip non-GET and cross-origin
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+
+  // Static assets: cache-first
+  if (url.pathname.startsWith('/static/')) {
+    e.respondWith(
+      caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
+        const clone = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return resp;
+      }))
+    );
+    return;
+  }
+
+  // Navigation: network-first, offline fallback
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).catch(() =>
+        caches.match('/offline/').then(r => r || new Response('Offline', {status: 503}))
+      )
+    );
+    return;
+  }
+});
+""".strip()
+    resp = HttpResponse(sw_js, content_type="application/javascript; charset=utf-8")
+    resp['Service-Worker-Allowed'] = '/'
+    resp['Cache-Control'] = 'no-cache'
+    return resp
+
+
+@login_required
+def pwa_offline(request: HttpRequest) -> HttpResponse:
+    return render(request, "portal/offline.html", {})

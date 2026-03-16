@@ -3,6 +3,9 @@ from . import views
 from . import views_wg
 
 urlpatterns = [
+    path("manifest.json", views.pwa_manifest, name="pwa_manifest"),
+    path("sw.js", views.pwa_sw, name="pwa_sw"),
+    path("offline/", views.pwa_offline, name="pwa_offline"),
     path("", views.dashboard, name="dashboard"),
     path("alerts/", views_wg.alerts, name="alerts"),
     path("data/", views_wg.data_view, name="data"),
