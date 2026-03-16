@@ -101,7 +101,6 @@ X_FRAME_OPTIONS = "DENY"
 # Integrations (read-only)
 WEATHERGUARD_DB = env("WG_FEEDBACK_DB", "/opt/weatherguard/data/feedback.db")
 WEATHERGUARD_TRENDS_DIR = env("WG_TRENDS_DIR", "/opt/weatherguard/public_media/trends")
-WEATHERGUARD_SMS_USERS = env("WG_SMS_USERS", "/opt/weatherguard/data/sms_users.json")
 
 FIELD_ENCRYPTION_KEY = env("ZDROWA_FIELD_ENCRYPTION_KEY", "")
 

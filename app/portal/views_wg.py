@@ -70,7 +70,7 @@ def alerts(request: HttpRequest) -> HttpResponse:
     has_details = False
 
     if prof.phone_e164:
-        status = sms_subscription_status(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164)
+        status = sms_subscription_status(settings.WEATHERGUARD_DB, prof.phone_e164)
         profiles = available_profiles(settings.WEATHERGUARD_DB, prof.phone_e164, days=30) or ["migraine", "allergy", "heart"]
         events = alerts_last_days(settings.WEATHERGUARD_DB, prof.phone_e164, profile=selected_profile, days=7, limit=500)
 
@@ -85,13 +85,13 @@ def alerts(request: HttpRequest) -> HttpResponse:
     if request.method == "POST" and prof.phone_e164:
         action = request.POST.get("action")
         if action == "stop":
-            ok = set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, False)
+            ok = set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, False)
             if ok:
                 prof.sms_enabled = False
                 prof.save(update_fields=["sms_enabled", "updated_at"])
             messages.success(request, "Alerty SMS wyłączone." if ok else "Nie udało się wyłączyć alertów.")
         elif action == "start":
-            ok = set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, True)
+            ok = set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, True)
             if ok:
                 prof.sms_enabled = True
                 prof.save(update_fields=["sms_enabled", "updated_at"])

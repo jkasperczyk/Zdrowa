@@ -108,31 +108,41 @@ def available_profiles(db_path: str, phone: str, days: int = 30) -> List[str]:
     finally:
         c.close()
 
-def sms_subscription_status(sms_users_path: str, phone: str) -> Optional[bool]:
+def sms_subscription_status(db_path: str, phone: str) -> Optional[bool]:
     try:
-        with open(sms_users_path, "r", encoding="utf-8") as f:
-            db = json.load(f)
-        entry = db.get(phone)
-        if entry is None:
+        c = sqlite3.connect(db_path)
+        c.row_factory = sqlite3.Row
+        try:
+            row = c.execute("SELECT subscribed FROM sms_users WHERE phone=?", (phone,)).fetchone()
+        finally:
+            c.close()
+        if row is None:
             return None
-        return bool(entry.get("subscribed", True))
+        return bool(row["subscribed"])
     except Exception:
         return None
 
-def set_sms_subscription(sms_users_path: str, phone: str, subscribed: bool) -> bool:
+
+def set_sms_subscription(db_path: str, phone: str, subscribed: bool) -> bool:
     try:
-        os.makedirs(os.path.dirname(sms_users_path) or ".", exist_ok=True)
-        db = {}
-        if os.path.exists(sms_users_path):
-            with open(sms_users_path, "r", encoding="utf-8") as f:
-                db = json.load(f) or {}
-        entry = db.get(phone) or {}
-        entry["subscribed"] = bool(subscribed)
-        db[phone] = entry
-        tmp = sms_users_path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(db, f, ensure_ascii=False, indent=2)
-        os.replace(tmp, sms_users_path)
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                INSERT INTO sms_users(phone, subscribed, factors_json, created_at, updated_at, last_interaction_at)
+                VALUES (?, ?, '{}', ?, ?, ?)
+                ON CONFLICT(phone) DO UPDATE SET
+                    subscribed          = excluded.subscribed,
+                    updated_at          = excluded.updated_at,
+                    last_interaction_at = excluded.last_interaction_at
+                """,
+                (phone, 1 if subscribed else 0, now, now, now),
+            )
+            c.commit()
+        finally:
+            c.close()
         return True
     except Exception:
         return False

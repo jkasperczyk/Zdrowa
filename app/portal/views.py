@@ -68,18 +68,18 @@ def alerts(request: HttpRequest) -> HttpResponse:
     prof = _get_profile(request.user)
     status = None
     if prof.phone_e164:
-        status = sms_subscription_status(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164)
+        status = sms_subscription_status(settings.WEATHERGUARD_DB, prof.phone_e164)
 
     if request.method == "POST" and prof.phone_e164:
         action = request.POST.get("action")
         if action == "stop":
-            ok = set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, False)
+            ok = set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, False)
             if ok:
                 prof.sms_enabled = False
                 prof.save(update_fields=["sms_enabled", "updated_at"])
             messages.success(request, "Alerty SMS wyłączone." if ok else "Nie udało się wyłączyć alertów.")
         elif action == "start":
-            ok = set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, True)
+            ok = set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, True)
             if ok:
                 prof.sms_enabled = True
                 prof.save(update_fields=["sms_enabled", "updated_at"])
@@ -211,7 +211,7 @@ def admin_tools(request: HttpRequest) -> HttpResponse:
                 try:
                     prof = getattr(target, "profile", None)
                     if prof and prof.phone_e164:
-                        set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, False)
+                        set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, False)
                 except Exception:
                     pass
                 target.delete()
@@ -250,7 +250,7 @@ def admin_tools(request: HttpRequest) -> HttpResponse:
                 prof.must_change_password = True
                 prof.save()
 
-                set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, prof.sms_enabled)
+                set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, prof.sms_enabled)
                 messages.success(request, f"Utworzono użytkownika: {username}. Hasło tymczasowe: {pwd} (wymagana zmiana przy logowaniu)")
                 return redirect("admin_tools")
 
@@ -334,7 +334,7 @@ def admin_user_edit(request: HttpRequest, user_id: int) -> HttpResponse:
             prof.save()
 
             try:
-                set_sms_subscription(settings.WEATHERGUARD_SMS_USERS, prof.phone_e164, prof.sms_enabled)
+                set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, prof.sms_enabled)
             except Exception:
                 pass
 
