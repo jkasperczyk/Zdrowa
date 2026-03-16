@@ -19,6 +19,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from datetime import date
 
 from .models import UserProfile, DailyWellbeing
+from .utils import greeting as make_greeting
 from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user, dashboard_summary, db_stats, all_users_latest_scores, users_last_scores, recent_alerts_all, batch_recent_alerts
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
@@ -82,6 +83,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         "prof": prof,
         "summary": summary,
         "today_wb": today_wb,
+        "greeting": make_greeting(request.user.first_name, getattr(prof, "gender", "")),
     })
 
 @login_required

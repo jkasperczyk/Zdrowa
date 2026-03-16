@@ -5,7 +5,12 @@
   {# ── Page header ── #}
   <div class="flex-between">
     <div>
-      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Panel zdrowia</h1>
+      {% if greeting %}
+        <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.2rem">{{ greeting }}</h1>
+        <p class="muted small" style="margin-bottom:.15rem">Panel zdrowia</p>
+      {% else %}
+        <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Panel zdrowia</h1>
+      {% endif %}
       {% if summary.last_dt %}
         <p class="muted small">Zaktualizowano: <b style="color:var(--text-2)">{{ summary.last_dt }}</b></p>
       {% elif prof.phone_e164 %}
