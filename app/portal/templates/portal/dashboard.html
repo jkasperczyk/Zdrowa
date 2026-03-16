@@ -19,36 +19,44 @@
     {% endif %}
   </div>
 
-  {# ── Risk score cards ── #}
+  {# ── Risk score cards with circular gauge ── #}
   {% if summary.scores %}
     <div class="row{% if summary.scores|length == 3 %}-3{% endif %}">
       {% for profile, s in summary.scores.items %}
-        <div class="card score-card tier-{{ s.tier }}">
-          <div class="card-title">
+        <div class="card score-card tier-{{ s.tier }}" style="text-align:center">
+          <div class="card-title" style="text-align:left">
             {% if profile == "migraine" %}Ryzyko migreny
             {% elif profile == "allergy" %}Ryzyko alergii
             {% elif profile == "heart" %}Ryzyko sercowe
             {% else %}{{ profile }}{% endif %}
           </div>
 
-          <span class="score-num">{{ s.score }}</span>
-
-          <div class="score-bar">
-            <div class="score-bar-fill" style="width:{% widthratio s.score 100 100 %}%"></div>
+          {# Circular gauge #}
+          <div class="score-ring">
+            <svg viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="score-ring-track" cx="50" cy="50" r="42"/>
+              <circle class="score-ring-fill"  cx="50" cy="50" r="42"
+                      stroke-dasharray="263.9"
+                      data-score="{{ s.score }}"/>
+            </svg>
+            <div class="score-ring-center">
+              <span class="score-num">{{ s.score }}</span>
+              <span class="score-label">/100</span>
+            </div>
           </div>
 
-          <div class="flex-between" style="gap:6px;flex-wrap:wrap">
+          <div class="flex-between" style="gap:6px;flex-wrap:wrap;text-align:left">
             <span class="badge {{ s.tier }}">{{ s.label|default:"—" }}</span>
             <span class="muted small">próg {{ s.threshold }}</span>
           </div>
 
           {% if s.reasons %}
-            <ul class="reason-list" style="margin-top:10px">
+            <ul class="reason-list" style="margin-top:10px;text-align:left">
               {% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}
             </ul>
           {% endif %}
 
-          {% if s.dt %}<p class="dim small" style="margin-top:10px">{{ s.dt }}</p>{% endif %}
+          {% if s.dt %}<p class="dim small" style="margin-top:10px;text-align:left">{{ s.dt }}</p>{% endif %}
         </div>
       {% endfor %}
     </div>
@@ -61,14 +69,23 @@
       <div class="row-4">
 
         {% if env.pressure_delta_3h is not None %}
-          <div class="card env-tile">
-            <span class="env-icon">↕</span>
-            <div class="card-title">Ciśnienie (3h)</div>
-            <div class="env-val {% if env.pressure_delta_3h > 3 or env.pressure_delta_3h < -3 %}warn{% endif %}">
-              {% if env.pressure_delta_3h > 0 %}+{% endif %}{{ env.pressure_delta_3h|floatformat:1 }}
+          {% if env.pressure_delta_3h > 3 or env.pressure_delta_3h < -3 %}
+            {% with tile_class="warn-tile" val_class="warn" %}
+            <div class="card env-tile {{ tile_class }}">
+              <span class="env-icon">↕</span>
+              <div class="card-title">Ciśnienie (3h)</div>
+              <div class="env-val {{ val_class }}">{% if env.pressure_delta_3h > 0 %}+{% endif %}{{ env.pressure_delta_3h|floatformat:1 }}</div>
+              <div class="env-unit">hPa · {% if env.pressure_delta_3h > 2 %}wzrost{% elif env.pressure_delta_3h < -2 %}spadek{% else %}stabilne{% endif %}</div>
             </div>
-            <div class="env-unit">hPa &nbsp;·&nbsp; {% if env.pressure_delta_3h > 2 %}wzrost{% elif env.pressure_delta_3h < -2 %}spadek{% else %}stabilne{% endif %}</div>
-          </div>
+            {% endwith %}
+          {% else %}
+            <div class="card env-tile ok-tile">
+              <span class="env-icon">↕</span>
+              <div class="card-title">Ciśnienie (3h)</div>
+              <div class="env-val ok">{% if env.pressure_delta_3h > 0 %}+{% endif %}{{ env.pressure_delta_3h|floatformat:1 }}</div>
+              <div class="env-unit">hPa · stabilne</div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if env.humidity_now is not None %}
@@ -81,57 +98,121 @@
         {% endif %}
 
         {% if env.aqi_us_max_6h is not None %}
-          <div class="card env-tile">
-            <span class="env-icon">🌫</span>
-            <div class="card-title">AQI (6h max)</div>
-            <div class="env-val {% if env.aqi_us_max_6h > 150 %}alert{% elif env.aqi_us_max_6h > 100 %}warn{% endif %}">
-              {{ env.aqi_us_max_6h|floatformat:0 }}
+          {% if env.aqi_us_max_6h > 150 %}
+            <div class="card env-tile bad-tile">
+              <span class="env-icon">🌫</span>
+              <div class="card-title">AQI (6h max)</div>
+              <div class="env-val alert">{{ env.aqi_us_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">US AQI · zanieczyszczone</div>
             </div>
-            <div class="env-unit">US AQI</div>
-          </div>
+          {% elif env.aqi_us_max_6h > 100 %}
+            <div class="card env-tile warn-tile">
+              <span class="env-icon">🌫</span>
+              <div class="card-title">AQI (6h max)</div>
+              <div class="env-val warn">{{ env.aqi_us_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">US AQI · podwyższone</div>
+            </div>
+          {% else %}
+            <div class="card env-tile ok-tile">
+              <span class="env-icon">🌫</span>
+              <div class="card-title">AQI (6h max)</div>
+              <div class="env-val ok">{{ env.aqi_us_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">US AQI · dobra jakość</div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if env.pm2_5_max_6h is not None %}
-          <div class="card env-tile">
-            <span class="env-icon">🔬</span>
-            <div class="card-title">PM2.5 (6h max)</div>
-            <div class="env-val">{{ env.pm2_5_max_6h|floatformat:1 }}</div>
-            <div class="env-unit">µg/m³</div>
-          </div>
+          {% if env.pm2_5_max_6h > 35 %}
+            <div class="card env-tile bad-tile">
+              <span class="env-icon">🔬</span>
+              <div class="card-title">PM2.5 (6h max)</div>
+              <div class="env-val alert">{{ env.pm2_5_max_6h|floatformat:1 }}</div>
+              <div class="env-unit">µg/m³ · wysokie</div>
+            </div>
+          {% elif env.pm2_5_max_6h > 15 %}
+            <div class="card env-tile warn-tile">
+              <span class="env-icon">🔬</span>
+              <div class="card-title">PM2.5 (6h max)</div>
+              <div class="env-val warn">{{ env.pm2_5_max_6h|floatformat:1 }}</div>
+              <div class="env-unit">µg/m³ · umiarkowane</div>
+            </div>
+          {% else %}
+            <div class="card env-tile ok-tile">
+              <span class="env-icon">🔬</span>
+              <div class="card-title">PM2.5 (6h max)</div>
+              <div class="env-val ok">{{ env.pm2_5_max_6h|floatformat:1 }}</div>
+              <div class="env-unit">µg/m³ · niskie</div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if env.pollen_max_6h is not None and env.pollen_max_6h > 0 %}
-          <div class="card env-tile">
-            <span class="env-icon">🌸</span>
-            <div class="card-title">Pyłki (6h max)</div>
-            <div class="env-val">{{ env.pollen_max_6h|floatformat:0 }}</div>
-            <div class="env-unit">{% if env.google_pollen_type %}{{ env.google_pollen_type }}{% else %}Open-Meteo{% endif %}</div>
-          </div>
+          {% if env.pollen_max_6h > 80 %}
+            <div class="card env-tile bad-tile">
+              <span class="env-icon">🌸</span>
+              <div class="card-title">Pyłki (6h max)</div>
+              <div class="env-val alert">{{ env.pollen_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">{% if env.google_pollen_type %}{{ env.google_pollen_type }}{% else %}Open-Meteo{% endif %} · wysokie</div>
+            </div>
+          {% elif env.pollen_max_6h > 30 %}
+            <div class="card env-tile warn-tile">
+              <span class="env-icon">🌸</span>
+              <div class="card-title">Pyłki (6h max)</div>
+              <div class="env-val warn">{{ env.pollen_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">{% if env.google_pollen_type %}{{ env.google_pollen_type }}{% else %}Open-Meteo{% endif %} · umiarkowane</div>
+            </div>
+          {% else %}
+            <div class="card env-tile">
+              <span class="env-icon">🌸</span>
+              <div class="card-title">Pyłki (6h max)</div>
+              <div class="env-val">{{ env.pollen_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">{% if env.google_pollen_type %}{{ env.google_pollen_type }}{% else %}Open-Meteo{% endif %}</div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if env.gust_max_6h is not None %}
-          <div class="card env-tile">
-            <span class="env-icon">💨</span>
-            <div class="card-title">Porywy wiatru (6h)</div>
-            <div class="env-val">{{ env.gust_max_6h|floatformat:0 }}</div>
-            <div class="env-unit">km/h max</div>
-          </div>
+          {% if env.gust_max_6h > 60 %}
+            <div class="card env-tile warn-tile">
+              <span class="env-icon">💨</span>
+              <div class="card-title">Porywy wiatru (6h)</div>
+              <div class="env-val warn">{{ env.gust_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">km/h max · silne</div>
+            </div>
+          {% else %}
+            <div class="card env-tile">
+              <span class="env-icon">💨</span>
+              <div class="card-title">Porywy wiatru (6h)</div>
+              <div class="env-val">{{ env.gust_max_6h|floatformat:0 }}</div>
+              <div class="env-unit">km/h max</div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if env.kp_index is not None %}
-          <div class="card env-tile">
-            <span class="env-icon">🌌</span>
-            <div class="card-title">Kp (geomagn.)</div>
-            <div class="env-val {% if env.kp_index >= 5 %}warn{% endif %}">{{ env.kp_index|floatformat:1 }}</div>
-            <div class="env-unit">NOAA</div>
-          </div>
+          {% if env.kp_index >= 5 %}
+            <div class="card env-tile warn-tile">
+              <span class="env-icon">🌌</span>
+              <div class="card-title">Kp (geomagn.)</div>
+              <div class="env-val warn">{{ env.kp_index|floatformat:1 }}</div>
+              <div class="env-unit">NOAA · burza magnetyczna</div>
+            </div>
+          {% else %}
+            <div class="card env-tile ok-tile">
+              <span class="env-icon">🌌</span>
+              <div class="card-title">Kp (geomagn.)</div>
+              <div class="env-val">{{ env.kp_index|floatformat:1 }}</div>
+              <div class="env-unit">NOAA · spokojne</div>
+            </div>
+          {% endif %}
         {% endif %}
 
         {% if env.imgw_warning_level is not None and env.imgw_warning_level > 0 %}
-          <div class="card env-tile">
+          <div class="card env-tile bad-tile">
             <span class="env-icon">⚠</span>
             <div class="card-title">Ostrzeżenie IMGW</div>
-            <div class="env-val warn">poz. {{ env.imgw_warning_level }}</div>
+            <div class="env-val alert">poz. {{ env.imgw_warning_level }}</div>
             <div class="env-unit">meteorologiczne</div>
           </div>
         {% endif %}
@@ -152,7 +233,7 @@
   {# ── Wellbeing + quick actions ── #}
   <div class="row">
     <div class="card">
-      <div class="flex-between" style="margin-bottom:14px">
+      <div class="flex-between" style="margin-bottom:16px">
         <h4 style="margin:0">Samopoczucie dziś</h4>
         <a href="{% url 'wellbeing' %}" class="btn xs secondary">Edytuj</a>
       </div>
@@ -189,4 +270,18 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  /* Animate circular gauge rings */
+  var CIRC = 263.9;
+  document.querySelectorAll('.score-ring-fill').forEach(function(el) {
+    var score = parseInt(el.dataset.score) || 0;
+    var offset = CIRC * (1 - score / 100);
+    requestAnimationFrame(function() {
+      setTimeout(function() { el.style.strokeDashoffset = offset; }, 80);
+    });
+  });
+</script>
 {% endblock %}

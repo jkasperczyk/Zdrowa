@@ -3,13 +3,15 @@
 <div class="stack">
   <div>
     <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Ustawienia</h1>
-    <p class="muted small">Numer telefonu łączy konto z danymi WeatherGuard. Preferencje alertów i cykl są opcjonalne.</p>
+    <p class="muted small">Numer telefonu łączy konto z danymi WeatherGuard. Lokalizacja i progi zapisywane są do konfiguracji alertów.</p>
   </div>
 
-  <div class="card">
-    <form method="post">
-      {% csrf_token %}
+  <form method="post">
+    {% csrf_token %}
 
+    {# ── Profil osobowy ── #}
+    <div class="card" style="margin-bottom:16px">
+      <p class="section-title" style="margin-top:0">Profil osobowy</p>
       <div class="form-row">
         <div class="field">
           <label for="id_display_name">Nazwa wyświetlana</label>
@@ -18,9 +20,9 @@
         <div class="field">
           <label for="id_phone_e164">Telefon (E.164)</label>
           <input id="id_phone_e164" name="phone_e164" value="{{ prof.phone_e164 }}" placeholder="+48123456789">
+          <span class="help">Łączy konto z danymi WeatherGuard i alertami SMS.</span>
         </div>
       </div>
-
       <div class="form-row">
         <div class="field">
           <label for="id_gender">Płeć</label>
@@ -37,27 +39,65 @@
               <option value="{{ a }}" {% if a in prof.enabled_alerts %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
           </select>
-          <span class="help">Ctrl/⌘ aby zaznaczyć wiele.</span>
+          <span class="help">Ctrl / ⌘ aby zaznaczyć wiele.</span>
         </div>
       </div>
 
-      <hr class="divider">
+      <div class="field" style="margin-bottom:0">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
+          <input type="checkbox" name="sms_enabled" {% if prof.sms_enabled %}checked{% endif %}>
+          Alerty SMS włączone
+        </label>
+      </div>
+    </div>
 
+    {# ── Konfiguracja WeatherGuard ── #}
+    <div class="card" style="margin-bottom:16px">
+      <p class="section-title" style="margin-top:0">Konfiguracja WeatherGuard</p>
       <div class="form-row">
         <div class="field">
-          <label for="id_cycle_length_days">Długość cyklu (dni) – tylko dla kobiet</label>
-          <input id="id_cycle_length_days" name="cycle_length_days" value="{{ prof.cycle_length_days|default:'' }}" placeholder="np. 28">
+          <label for="id_location">Lokalizacja</label>
+          <input id="id_location" name="location" value="{{ prof.location }}" placeholder="np. Zawiercie,PL">
+          <span class="help">Miasto i kod kraju, np. <code>Warszawa,PL</code>.</span>
         </div>
         <div class="field">
-          <label for="id_cycle_start_date">Data początku cyklu (YYYY-MM-DD) – tylko dla kobiet</label>
-          <input id="id_cycle_start_date" name="cycle_start_date" value="{{ prof.cycle_start_date|date:'Y-m-d' }}" placeholder="2026-02-01">
+          <label for="id_alert_threshold">Próg alertu (1–100)</label>
+          <input id="id_alert_threshold" name="alert_threshold" type="number" min="1" max="100"
+                 value="{{ prof.alert_threshold|default:'' }}" placeholder="puste = domyślny systemu">
+          <span class="help">Minimalne ryzyko do wysłania SMS. Puste = próg z konfiguracji systemu.</span>
         </div>
       </div>
-
-      <div class="actions mt-2">
-        <button class="btn" type="submit">Zapisz ustawienia</button>
+      <div class="form-row" style="margin-bottom:0">
+        <div class="field" style="margin-bottom:0">
+          <label for="id_quiet_hours">Godziny ciszy (cisza nocna)</label>
+          <input id="id_quiet_hours" name="quiet_hours" value="{{ prof.quiet_hours }}" placeholder="np. 22-7">
+          <span class="help">Format <code>HH-HH</code>, np. <code>22-7</code>. Puste = zawsze aktywny.</span>
+        </div>
+        <div class="field" style="margin-bottom:0"></div>
       </div>
-    </form>
-  </div>
+    </div>
+
+    {# ── Cykl miesięczny (opcjonalne) ── #}
+    <div class="card" style="margin-bottom:16px">
+      <p class="section-title" style="margin-top:0">Cykl miesięczny <span class="pill">opcjonalne · tylko dla kobiet</span></p>
+      <div class="form-row" style="margin-bottom:0">
+        <div class="field" style="margin-bottom:0">
+          <label for="id_cycle_length_days">Długość cyklu (dni)</label>
+          <input id="id_cycle_length_days" name="cycle_length_days"
+                 type="number" min="20" max="45"
+                 value="{{ prof.cycle_length_days|default:'' }}" placeholder="np. 28">
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="id_cycle_start_date">Data początku cyklu (RRRR-MM-DD)</label>
+          <input id="id_cycle_start_date" name="cycle_start_date" type="date"
+                 value="{{ prof.cycle_start_date|date:'Y-m-d' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" type="submit">Zapisz ustawienia</button>
+    </div>
+  </form>
 </div>
 {% endblock %}

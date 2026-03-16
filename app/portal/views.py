@@ -139,15 +139,63 @@ def trend_file(request: HttpRequest, fname: str) -> HttpResponse:
 
 @login_required
 def settings_view(request: HttpRequest) -> HttpResponse:
+    from portal.models import UserProfile
     prof = _get_profile(request.user)
+    genders = UserProfile.GENDER_CHOICES
+    alert_types = ["migraine", "allergy", "heart"]
+
     if request.method == "POST":
         prof.display_name = request.POST.get("display_name", "").strip()
         prof.phone_e164 = request.POST.get("phone_e164", "").strip()
-        prof.default_profile = request.POST.get("default_profile", "migraine").strip()
+        prof.gender = request.POST.get("gender", "unspecified").strip()
+        prof.enabled_alerts = request.POST.getlist("enabled_alerts")
+        prof.sms_enabled = request.POST.get("sms_enabled") == "on"
+        prof.default_profile = prof.enabled_alerts[0] if prof.enabled_alerts else "migraine"
+
+        # WeatherGuard runner config
+        prof.location = request.POST.get("location", "").strip()
+        raw_threshold = request.POST.get("alert_threshold", "").strip()
+        prof.alert_threshold = int(raw_threshold) if raw_threshold.isdigit() else None
+        prof.quiet_hours = request.POST.get("quiet_hours", "").strip()
+
+        # Menstrual cycle (optional)
+        raw_cycle = request.POST.get("cycle_length_days", "").strip()
+        prof.cycle_length_days = int(raw_cycle) if raw_cycle.isdigit() else None
+        raw_csd = request.POST.get("cycle_start_date", "").strip()
+        from datetime import date as _date
+        try:
+            prof.cycle_start_date = _date.fromisoformat(raw_csd) if raw_csd else None
+        except ValueError:
+            prof.cycle_start_date = None
+
         prof.save()
+
+        try:
+            set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, prof.sms_enabled)
+        except Exception:
+            pass
+        if prof.phone_e164:
+            try:
+                write_wg_user(
+                    settings.WEATHERGUARD_DB,
+                    phone=prof.phone_e164,
+                    profiles=prof.enabled_alerts or ["migraine"],
+                    location=prof.location,
+                    threshold=prof.alert_threshold,
+                    quiet_hours=prof.quiet_hours or None,
+                    enabled=prof.sms_enabled and request.user.is_active,
+                )
+            except Exception:
+                pass
+
         messages.success(request, "Zapisano ustawienia.")
         return redirect("settings")
-    return render(request, "portal/settings.html", {"prof": prof})
+
+    return render(request, "portal/settings.html", {
+        "prof": prof,
+        "genders": genders,
+        "alert_types": alert_types,
+    })
 
 def _is_staff(u) -> bool:
     return bool(u and u.is_authenticated and u.is_staff)
