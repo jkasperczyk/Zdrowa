@@ -166,13 +166,27 @@ def write_wg_user(
     quiet_hours=None,
     enabled: bool = True,
 ) -> bool:
-    """Upsert a user's WeatherGuard runner config into the wg_users table in feedback.db."""
+    """Upsert a user's WeatherGuard runner config into the wg_users table in feedback.db.
+    Creates the table if it doesn't exist yet (Health_Guard may not have run yet)."""
     try:
         import json as _json
         now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         c = sqlite3.connect(db_path)
         try:
             c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS wg_users (
+                    phone         TEXT PRIMARY KEY,
+                    profiles_json TEXT NOT NULL DEFAULT '["migraine"]',
+                    location      TEXT NOT NULL DEFAULT '',
+                    threshold     INTEGER,
+                    quiet_hours   TEXT,
+                    enabled       INTEGER NOT NULL DEFAULT 1,
+                    updated_at    TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
             c.execute(
                 """
                 INSERT INTO wg_users(phone, profiles_json, location, threshold, quiet_hours, enabled, updated_at)
