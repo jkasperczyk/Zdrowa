@@ -168,16 +168,20 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
         entry.exercise_1_10 = exercise
         entry.save()
 
-        if prof.phone_e164:
-            write_wellbeing(
+        if not prof.phone_e164:
+            messages.warning(request, "Zapisano lokalnie, ale brak numeru telefonu — dane nie zsynchronizowano z systemem alertów. Ustaw numer w Ustawieniach.")
+        else:
+            ok = write_wellbeing(
                 settings.WEATHERGUARD_DB,
                 phone=prof.phone_e164,
                 day=today.isoformat(),
                 stress_1_10=stress,
                 exercise_1_10=exercise,
             )
-
-        messages.success(request, "Zapisano samopoczucie na dziś.")
+            if ok:
+                messages.success(request, "Zapisano samopoczucie na dziś.")
+            else:
+                messages.warning(request, "Zapisano lokalnie, ale synchronizacja z feedback.db nie powiodła się.")
         return redirect("wellbeing")
 
     return render(request, "portal/wellbeing.html", {"prof": prof, "entry": entry, "today": today})
