@@ -15,7 +15,7 @@ from django.http import HttpRequest, HttpResponse, FileResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 
 from .models import UserProfile
-from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files
+from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
 
@@ -212,6 +212,15 @@ def admin_tools(request: HttpRequest) -> HttpResponse:
                     prof = getattr(target, "profile", None)
                     if prof and prof.phone_e164:
                         set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, False)
+                        write_wg_user(
+                            settings.WEATHERGUARD_DB,
+                            phone=prof.phone_e164,
+                            profiles=getattr(prof, "enabled_alerts", None) or ["migraine"],
+                            location=getattr(prof, "location", ""),
+                            threshold=getattr(prof, "alert_threshold", None),
+                            quiet_hours=getattr(prof, "quiet_hours", None) or None,
+                            enabled=False,
+                        )
                 except Exception:
                     pass
                 target.delete()
@@ -247,10 +256,22 @@ def admin_tools(request: HttpRequest) -> HttpResponse:
                 prof.gender = cd.get("gender") or "unspecified"
                 prof.cycle_length_days = cd.get("cycle_length_days")
                 prof.cycle_start_date = cd.get("cycle_start_date")
+                prof.location = cd.get("location") or ""
+                prof.alert_threshold = cd.get("alert_threshold")
+                prof.quiet_hours = cd.get("quiet_hours") or ""
                 prof.must_change_password = True
                 prof.save()
 
                 set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, prof.sms_enabled)
+                write_wg_user(
+                    settings.WEATHERGUARD_DB,
+                    phone=prof.phone_e164,
+                    profiles=prof.enabled_alerts or ["migraine"],
+                    location=prof.location,
+                    threshold=prof.alert_threshold,
+                    quiet_hours=prof.quiet_hours or None,
+                    enabled=prof.sms_enabled,
+                )
                 messages.success(request, f"Utworzono użytkownika: {username}. Hasło tymczasowe: {pwd} (wymagana zmiana przy logowaniu)")
                 return redirect("admin_tools")
 
@@ -296,6 +317,16 @@ def admin_tools(request: HttpRequest) -> HttpResponse:
                     prof.default_profile = (merged[0] if merged else "migraine")
                     prof.save()
 
+                    write_wg_user(
+                        settings.WEATHERGUARD_DB,
+                        phone=prof.phone_e164,
+                        profiles=prof.enabled_alerts or ["migraine"],
+                        location=getattr(prof, "location", ""),
+                        threshold=getattr(prof, "alert_threshold", None),
+                        quiet_hours=getattr(prof, "quiet_hours", None) or None,
+                        enabled=bool(getattr(prof, "sms_enabled", True)),
+                    )
+
                 messages.success(request, f"Import OK: utworzone={created_cnt}, zaktualizowane={updated_cnt} (dedupe po telefonie).")
                 return redirect("admin_tools")
 
@@ -331,12 +362,24 @@ def admin_user_edit(request: HttpRequest, user_id: int) -> HttpResponse:
             prof.gender = cd.get("gender") or "unspecified"
             prof.cycle_length_days = cd.get("cycle_length_days")
             prof.cycle_start_date = cd.get("cycle_start_date")
+            prof.location = cd.get("location") or ""
+            prof.alert_threshold = cd.get("alert_threshold")
+            prof.quiet_hours = cd.get("quiet_hours") or ""
             prof.save()
 
             try:
                 set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, prof.sms_enabled)
             except Exception:
                 pass
+            write_wg_user(
+                settings.WEATHERGUARD_DB,
+                phone=prof.phone_e164,
+                profiles=prof.enabled_alerts or ["migraine"],
+                location=prof.location,
+                threshold=prof.alert_threshold,
+                quiet_hours=prof.quiet_hours or None,
+                enabled=prof.sms_enabled and u.is_active,
+            )
 
             messages.success(request, f"Zapisano: {u.username}")
             return redirect("admin_tools")
@@ -352,6 +395,9 @@ def admin_user_edit(request: HttpRequest, user_id: int) -> HttpResponse:
             "sms_enabled": prof.sms_enabled,
             "cycle_length_days": prof.cycle_length_days,
             "cycle_start_date": prof.cycle_start_date,
+            "location": prof.location,
+            "alert_threshold": prof.alert_threshold,
+            "quiet_hours": prof.quiet_hours,
         })
 
     return render(request, "portal/admin_user_edit.html", {"target": u, "form": form})

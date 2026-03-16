@@ -17,6 +17,11 @@ class UserProfile(models.Model):
     enabled_alerts = models.JSONField(default=list, blank=True)
     sms_enabled = models.BooleanField(default=True)
 
+    # WeatherGuard alert configuration
+    location = models.CharField(max_length=120, blank=True, default="", help_text="Np. Zawiercie,PL")
+    alert_threshold = models.PositiveSmallIntegerField(null=True, blank=True, help_text="Próg alertu (1-100), puste = domyślny")
+    quiet_hours = models.CharField(max_length=10, blank=True, default="", help_text="Cisza nocna, np. 22-7")
+
     gender = models.CharField(max_length=16, choices=GENDER_CHOICES, default="unspecified")
     cycle_length_days = models.PositiveSmallIntegerField(null=True, blank=True, help_text="20-45 (tylko dla kobiet)")
     cycle_start_date = models.DateField(null=True, blank=True, help_text="Data początku ostatniego cyklu (YYYY-MM-DD)")

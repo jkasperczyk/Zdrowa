@@ -157,6 +157,52 @@ def list_trend_files(trends_dir: str, phone: str, limit: int = 20) -> List[str]:
     return files[:limit]
 
 
+def write_wg_user(
+    db_path: str,
+    phone: str,
+    profiles: list,
+    location: str,
+    threshold=None,
+    quiet_hours=None,
+    enabled: bool = True,
+) -> bool:
+    """Upsert a user's WeatherGuard runner config into the wg_users table in feedback.db."""
+    try:
+        import json as _json
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                INSERT INTO wg_users(phone, profiles_json, location, threshold, quiet_hours, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(phone) DO UPDATE SET
+                    profiles_json = excluded.profiles_json,
+                    location      = excluded.location,
+                    threshold     = excluded.threshold,
+                    quiet_hours   = excluded.quiet_hours,
+                    enabled       = excluded.enabled,
+                    updated_at    = excluded.updated_at
+                """,
+                (
+                    phone,
+                    _json.dumps(profiles or ["migraine"], ensure_ascii=False),
+                    location or "",
+                    threshold if threshold is not None else None,
+                    quiet_hours or None,
+                    1 if enabled else 0,
+                    now,
+                ),
+            )
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception:
+        return False
+
+
 def last_readings(db_path: str, phone: str, profile: str, limit: int = 80):
     """Backward-compatible helper for older portal/views.py.
     Returns list of dicts with keys: ts, dt, score.

@@ -31,6 +31,10 @@ class AdminCreateUserForm(forms.Form):
     enabled_alerts = forms.MultipleChoiceField(label="Typy alertów", choices=ALERT_CHOICES, required=False)
     sms_enabled = forms.BooleanField(label="SMS alerts włączone", required=False, initial=True)
 
+    location = forms.CharField(label="Lokalizacja (np. Zawiercie,PL)", max_length=120, required=False)
+    alert_threshold = forms.IntegerField(label="Próg alertu (1-100)", required=False, min_value=1, max_value=100)
+    quiet_hours = forms.CharField(label="Cisza nocna (np. 22-7)", max_length=10, required=False)
+
     cycle_length_days = forms.IntegerField(label="Długość cyklu (dni)", required=False, min_value=20, max_value=45)
     cycle_start_date = forms.DateField(label="Start cyklu (YYYY-MM-DD)", required=False, input_formats=["%Y-%m-%d"])
 
