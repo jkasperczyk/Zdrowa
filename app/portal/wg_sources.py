@@ -124,11 +124,24 @@ def sms_subscription_status(db_path: str, phone: str) -> Optional[bool]:
 
 
 def set_sms_subscription(db_path: str, phone: str, subscribed: bool) -> bool:
+    """Creates the sms_users table if it doesn't exist yet (Health_Guard may not have run yet)."""
     try:
         now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         c = sqlite3.connect(db_path)
         try:
             c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sms_users (
+                    phone               TEXT PRIMARY KEY,
+                    subscribed          INTEGER NOT NULL DEFAULT 1,
+                    factors_json        TEXT,
+                    created_at          TEXT,
+                    updated_at          TEXT,
+                    last_interaction_at TEXT
+                )
+                """
+            )
             c.execute(
                 """
                 INSERT INTO sms_users(phone, subscribed, factors_json, created_at, updated_at, last_interaction_at)
