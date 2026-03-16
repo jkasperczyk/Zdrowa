@@ -1,21 +1,52 @@
 {% extends "portal/base.html" %}
+{% block extra_css %}
+.login-wrap {
+  min-height: calc(100vh - 56px);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 32px 20px;
+  gap: 24px;
+}
+.login-brand {
+  text-align: center;
+}
+.login-brand-dot {
+  width: 44px; height: 44px; border-radius: 14px; margin: 0 auto 14px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--green) 100%);
+  box-shadow: 0 0 32px var(--accent-glow), 0 0 60px rgba(16,217,160,.15);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.3rem;
+}
+.login-brand h1 {
+  font-size: 1.3rem; font-weight: 800; letter-spacing: -.03em;
+  margin-bottom: .25rem;
+}
+.login-brand p { font-size: .85rem; color: var(--muted); margin: 0; }
+.login-wrap > .card { width: 100%; max-width: 400px; }
+{% endblock %}
 {% block content %}
-<div class="page-center">
+<div class="login-wrap">
+  <div class="login-brand">
+    <div class="login-brand-dot">🛡</div>
+    <h1>zdrowa.pracunia.pl</h1>
+    <p>Portal zdrowia WeatherGuard</p>
+  </div>
+
   <div class="card">
-    <h2>Logowanie</h2>
-    <p class="muted">Użyj loginu (np. e-mail) i hasła. Admin tworzy konta użytkowników.</p>
-    <form method="post" style="margin-top:16px">
+    <h2 style="margin-bottom:.4rem">Logowanie</h2>
+    <p class="muted small" style="margin-bottom:20px">Użyj loginu (np. e-mail) i hasła przydzielonego przez administratora.</p>
+    <form method="post">
       {% csrf_token %}
       <div class="field">
         <label for="id_username">Login</label>
-        <input id="id_username" name="username" autocomplete="username" required>
+        <input id="id_username" name="username" autocomplete="username" required autofocus>
       </div>
       <div class="field">
         <label for="id_password">Hasło</label>
         <input id="id_password" name="password" type="password" autocomplete="current-password" required>
       </div>
       <div class="actions mt-2">
-        <button class="btn" type="submit">Zaloguj</button>
+        <button class="btn" type="submit" style="width:100%;justify-content:center">Zaloguj się</button>
       </div>
     </form>
   </div>

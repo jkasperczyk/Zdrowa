@@ -1,8 +1,11 @@
 {% extends "portal/base.html" %}
 {% block content %}
-  <div class="card">
-    <h2>ADMIN TOOLS – Użytkownicy</h2>
-    <p class="muted">Hasła: reset tymczasowy + wymuszona zmiana przy logowaniu (/password/change/).</p>
+<div class="stack">
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Zarządzanie użytkownikami</h1>
+      <p class="muted small">Reset hasła → tymczasowe hasło + wymuszona zmiana przy następnym logowaniu.</p>
+    </div>
   </div>
 
   <div class="card">
@@ -21,6 +24,7 @@
   <div class="card">
     <h3>Lista użytkowników</h3>
     {% if users_rows %}
+      <div class="table-wrap" style="margin-top:12px">
       <table>
         <thead>
           <tr>
@@ -84,31 +88,37 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     {% else %}
-      <p class="muted">Brak wyników.</p>
+      <p class="muted" style="margin-top:8px">Brak wyników.</p>
     {% endif %}
   </div>
 
   <div class="row">
     <div class="card">
-      <h3>Dodaj użytkownika</h3>
+      <h3 style="margin-bottom:16px">Dodaj użytkownika</h3>
       <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="create">
-        {{ create_form.as_p }}
-        <button class="btn" type="submit">Utwórz konto</button>
+        <div class="django-form">{{ create_form.as_p }}</div>
+        <div class="actions mt-2">
+          <button class="btn" type="submit">Utwórz konto</button>
+        </div>
       </form>
-      <p class="muted small">Po utworzeniu hasło tymczasowe dostaniesz w komunikacie na górze.</p>
+      <p class="muted small mt-2">Hasło tymczasowe pojawi się w komunikacie na górze strony.</p>
     </div>
 
     <div class="card">
-      <h3>Import users.txt</h3>
+      <h3 style="margin-bottom:16px">Import users.txt</h3>
       <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="import">
-        {{ import_form.as_p }}
-        <button class="btn" type="submit">Importuj (dedupe)</button>
+        <div class="django-form">{{ import_form.as_p }}</div>
+        <div class="actions mt-2">
+          <button class="btn" type="submit">Importuj (dedupe)</button>
+        </div>
       </form>
     </div>
   </div>
+</div>
 {% endblock %}

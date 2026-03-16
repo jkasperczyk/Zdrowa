@@ -1,9 +1,9 @@
 {% extends "portal/base.html" %}
 {% block content %}
 <div class="stack">
-  <div class="card">
-    <h2>Dane</h2>
-    <p class="muted">Bieżące odczyty (readings) z WeatherGuard – ostatnie 7 dni, niezależnie od progów alertów.</p>
+  <div>
+    <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Dane</h1>
+    <p class="muted small">Odczyty WeatherGuard — ostatnie 7 dni, niezależnie od progów alertów.</p>
   </div>
 
   {% if not prof.phone_e164 %}

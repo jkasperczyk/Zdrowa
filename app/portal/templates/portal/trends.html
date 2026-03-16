@@ -1,23 +1,65 @@
 {% extends "portal/base.html" %}
+{% block extra_css %}
+.trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.trend-card {
+  display: flex; align-items: center; gap: 14px;
+  text-decoration: none; color: var(--text-2);
+  transition: border-color var(--t), box-shadow var(--t), color var(--t);
+}
+.trend-card:hover {
+  border-color: rgba(79,143,255,.35);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(79,143,255,.15);
+  color: var(--text);
+}
+.trend-icon {
+  width: 40px; height: 40px; border-radius: var(--r-sm); flex-shrink: 0;
+  background: var(--accent-dim);
+  border: 1px solid rgba(79,143,255,.18);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+  transition: background var(--t);
+}
+.trend-card:hover .trend-icon { background: rgba(79,143,255,.2); }
+.trend-name { font-size: .875rem; font-weight: 500; word-break: break-word; }
+.trend-sub  { font-size: .75rem; color: var(--dim); margin-top: 2px; }
+{% endblock %}
 {% block content %}
-  <div class="card">
-    <h2>TRENDY</h2>
-    <p class="muted">Pliki trendów filtrowane po Twoim numerze (serwowane bezpośrednio przez aplikację).</p>
-
-    {% if not prof.phone_e164 %}
-      <p>Ustaw numer telefonu w <a href="/settings/">USTAWIENIA</a>.</p>
-    {% else %}
-      {% if items %}
-        <ul>
-          {% for it in items %}
-            <li style="margin:8px 0">
-              <a href="/trends/file/{{ it.name }}/" target="_blank">{{ it.name }}</a>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p>Brak trendów dla tego numeru.</p>
-      {% endif %}
-    {% endif %}
+<div class="stack">
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Trendy</h1>
+      <p class="muted small">Wykresy wygenerowane przez WeatherGuard dla Twojego numeru telefonu.</p>
+    </div>
   </div>
+
+  {% if not prof.phone_e164 %}
+    <div class="card">
+      <p>Ustaw numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>, aby widzieć wykresy.</p>
+    </div>
+  {% else %}
+    {% if items %}
+      <div class="trend-grid">
+        {% for it in items %}
+          <a class="card trend-card" href="/trends/file/{{ it.name }}/" target="_blank" rel="noopener">
+            <div class="trend-icon">📈</div>
+            <div>
+              <div class="trend-name">{{ it.name }}</div>
+              <div class="trend-sub">Otwórz w nowej karcie</div>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card" style="text-align:center;padding:48px 24px">
+        <div style="font-size:2.5rem;margin-bottom:12px;opacity:.35">📊</div>
+        <p class="muted" style="margin:0">Brak trendów dla tego numeru telefonu.<br>Wykresy pojawią się po zebraniu wystarczających danych.</p>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
 {% endblock %}

@@ -1,38 +1,17 @@
 {% extends "portal/base.html" %}
-{% block extra_css %}
-.score-card { position: relative; }
-.score-card .card-value { font-size: 3.5rem; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
-.score-card.tier-green .card-value { color: var(--green); }
-.score-card.tier-orange .card-value { color: var(--orange); }
-.score-card.tier-red .card-value { color: var(--red); }
-.score-card.tier-dim .card-value { color: var(--dim); }
-.score-bar { height: 4px; border-radius: 2px; background: var(--border); margin: 10px 0 12px; overflow: hidden; }
-.score-bar-fill { height: 100%; border-radius: 2px; transition: width .4s ease; }
-.tier-green .score-bar-fill  { background: var(--green); }
-.tier-orange .score-bar-fill { background: var(--orange); }
-.tier-red .score-bar-fill    { background: var(--red); }
-.tier-dim .score-bar-fill    { background: var(--dim); }
-.env-val { font-size: 1.35rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: 4px 0 2px; }
-.wb-bar-track { height: 6px; background: var(--border); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
-.wb-bar-fill  { height: 100%; border-radius: 3px; background: var(--accent); }
-.reason-list { list-style: none; padding: 0; margin: 8px 0 0; }
-.reason-list li { font-size: .8rem; color: var(--muted); padding: 2px 0; }
-.reason-list li::before { content: "· "; color: var(--dim); }
-{% endblock %}
-
 {% block content %}
 <div class="stack">
 
-  {# ── Header ── #}
+  {# ── Page header ── #}
   <div class="flex-between">
     <div>
-      <h2 style="margin-bottom:.2rem">Panel użytkownika</h2>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Panel zdrowia</h1>
       {% if summary.last_dt %}
-        <p class="muted small">Ostatnia aktualizacja: {{ summary.last_dt }}</p>
+        <p class="muted small">Zaktualizowano: <b style="color:var(--text-2)">{{ summary.last_dt }}</b></p>
       {% elif prof.phone_e164 %}
-        <p class="muted small">Brak danych — WeatherGuard jeszcze nie uruchomił się dla Twojego numeru.</p>
+        <p class="muted small">WeatherGuard nie uruchomił się jeszcze dla Twojego numeru.</p>
       {% else %}
-        <p class="muted small">Uzupełnij numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>, aby widzieć dane.</p>
+        <p class="muted small">Uzupełnij <a href="{% url 'settings' %}">numer telefonu</a>, aby widzieć dane.</p>
       {% endif %}
     </div>
     {% if not prof.phone_e164 %}
@@ -40,7 +19,7 @@
     {% endif %}
   </div>
 
-  {# ── Risk score tiles ── #}
+  {# ── Risk score cards ── #}
   {% if summary.scores %}
     <div class="row{% if summary.scores|length == 3 %}-3{% endif %}">
       {% for profile, s in summary.scores.items %}
@@ -52,152 +31,145 @@
             {% else %}{{ profile }}{% endif %}
           </div>
 
-          <div class="card-value">{{ s.score }}</div>
+          <span class="score-num">{{ s.score }}</span>
+
           <div class="score-bar">
             <div class="score-bar-fill" style="width:{% widthratio s.score 100 100 %}%"></div>
           </div>
 
-          <div class="flex-between" style="flex-wrap:wrap;gap:6px">
-            <span class="badge {% if s.tier == 'green' %}green{% elif s.tier == 'orange' %}orange{% elif s.tier == 'red' %}red{% endif %}">
-              {{ s.label|default:"—" }}
-            </span>
+          <div class="flex-between" style="gap:6px;flex-wrap:wrap">
+            <span class="badge {{ s.tier }}">{{ s.label|default:"—" }}</span>
             <span class="muted small">próg {{ s.threshold }}</span>
           </div>
 
           {% if s.reasons %}
-            <ul class="reason-list">
+            <ul class="reason-list" style="margin-top:10px">
               {% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}
             </ul>
           {% endif %}
 
-          {% if s.dt %}
-            <p class="dim small" style="margin-top:10px">{{ s.dt }}</p>
-          {% endif %}
+          {% if s.dt %}<p class="dim small" style="margin-top:10px">{{ s.dt }}</p>{% endif %}
         </div>
       {% endfor %}
     </div>
   {% endif %}
 
   {# ── Environmental factors ── #}
-  {% with env=summary.env %}
-  {% if env %}
+  {% with env=summary.env %}{% if env %}
     <div>
-      <h4>Czynniki środowiskowe</h4>
-      <div class="row-4" style="margin-top:8px">
+      <p class="section-title">Czynniki środowiskowe</p>
+      <div class="row-4">
 
         {% if env.pressure_delta_3h is not None %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">↕</span>
             <div class="card-title">Ciśnienie (3h)</div>
-            <div class="env-val">
-              {% if env.pressure_delta_3h > 0 %}+{% endif %}{{ env.pressure_delta_3h|floatformat:1 }} hPa
+            <div class="env-val {% if env.pressure_delta_3h > 3 or env.pressure_delta_3h < -3 %}warn{% endif %}">
+              {% if env.pressure_delta_3h > 0 %}+{% endif %}{{ env.pressure_delta_3h|floatformat:1 }}
             </div>
-            <div class="card-sub">
-              {% if env.pressure_delta_3h > 2 %}wzrost{% elif env.pressure_delta_3h < -2 %}spadek{% else %}stabilne{% endif %}
-            </div>
+            <div class="env-unit">hPa &nbsp;·&nbsp; {% if env.pressure_delta_3h > 2 %}wzrost{% elif env.pressure_delta_3h < -2 %}spadek{% else %}stabilne{% endif %}</div>
           </div>
         {% endif %}
 
         {% if env.humidity_now is not None %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">💧</span>
             <div class="card-title">Wilgotność</div>
             <div class="env-val">{{ env.humidity_now }}%</div>
-            <div class="card-sub">teraz</div>
+            <div class="env-unit">teraz</div>
           </div>
         {% endif %}
 
         {% if env.aqi_us_max_6h is not None %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">🌫</span>
             <div class="card-title">AQI (6h max)</div>
-            <div class="env-val
-              {% if env.aqi_us_max_6h > 150 %}" style="color:var(--red){% elif env.aqi_us_max_6h > 100 %}" style="color:var(--orange){% else %}"{% endif %}">
+            <div class="env-val {% if env.aqi_us_max_6h > 150 %}alert{% elif env.aqi_us_max_6h > 100 %}warn{% endif %}">
               {{ env.aqi_us_max_6h|floatformat:0 }}
             </div>
-            <div class="card-sub">US AQI</div>
+            <div class="env-unit">US AQI</div>
           </div>
         {% endif %}
 
         {% if env.pm2_5_max_6h is not None %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">🔬</span>
             <div class="card-title">PM2.5 (6h max)</div>
             <div class="env-val">{{ env.pm2_5_max_6h|floatformat:1 }}</div>
-            <div class="card-sub">µg/m³</div>
+            <div class="env-unit">µg/m³</div>
           </div>
         {% endif %}
 
         {% if env.pollen_max_6h is not None and env.pollen_max_6h > 0 %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">🌸</span>
             <div class="card-title">Pyłki (6h max)</div>
             <div class="env-val">{{ env.pollen_max_6h|floatformat:0 }}</div>
-            <div class="card-sub">
-              {% if env.google_pollen_type %}{{ env.google_pollen_type }}{% else %}Open-Meteo{% endif %}
-            </div>
+            <div class="env-unit">{% if env.google_pollen_type %}{{ env.google_pollen_type }}{% else %}Open-Meteo{% endif %}</div>
           </div>
         {% endif %}
 
         {% if env.gust_max_6h is not None %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">💨</span>
             <div class="card-title">Porywy wiatru (6h)</div>
             <div class="env-val">{{ env.gust_max_6h|floatformat:0 }}</div>
-            <div class="card-sub">km/h max</div>
+            <div class="env-unit">km/h max</div>
           </div>
         {% endif %}
 
         {% if env.kp_index is not None %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">🌌</span>
             <div class="card-title">Kp (geomagn.)</div>
-            <div class="env-val {% if env.kp_index >= 5 %}" style="color:var(--orange){% endif %}">
-              {{ env.kp_index|floatformat:1 }}
-            </div>
-            <div class="card-sub">NOAA</div>
+            <div class="env-val {% if env.kp_index >= 5 %}warn{% endif %}">{{ env.kp_index|floatformat:1 }}</div>
+            <div class="env-unit">NOAA</div>
           </div>
         {% endif %}
 
         {% if env.imgw_warning_level is not None and env.imgw_warning_level > 0 %}
-          <div class="card">
+          <div class="card env-tile">
+            <span class="env-icon">⚠</span>
             <div class="card-title">Ostrzeżenie IMGW</div>
-            <div class="env-val" style="color:var(--orange)">poz. {{ env.imgw_warning_level }}</div>
-            <div class="card-sub">meteorologiczne</div>
+            <div class="env-val warn">poz. {{ env.imgw_warning_level }}</div>
+            <div class="env-unit">meteorologiczne</div>
           </div>
         {% endif %}
 
         {% if env.gios_index_name %}
-          <div class="card">
-            <div class="card-title">Jakość powietrza (GIOŚ)</div>
+          <div class="card env-tile">
+            <span class="env-icon">🌿</span>
+            <div class="card-title">Jakość powietrza</div>
             <div class="env-val">{{ env.gios_index_name }}</div>
-            <div class="card-sub">indeks PL</div>
+            <div class="env-unit">GIOŚ · indeks PL</div>
           </div>
         {% endif %}
 
       </div>
     </div>
-  {% endif %}
-  {% endwith %}
+  {% endif %}{% endwith %}
 
   {# ── Wellbeing + quick actions ── #}
   <div class="row">
     <div class="card">
-      <div class="flex-between" style="margin-bottom:12px">
-        <h4 style="margin:0">Samopoczucie dzisiaj</h4>
+      <div class="flex-between" style="margin-bottom:14px">
+        <h4 style="margin:0">Samopoczucie dziś</h4>
         <a href="{% url 'wellbeing' %}" class="btn xs secondary">Edytuj</a>
       </div>
       {% if today_wb and today_wb.stress_1_10 is not None or today_wb and today_wb.exercise_1_10 is not None %}
-        <div style="margin-bottom:12px">
-          <div class="card-title" style="margin-bottom:4px">Stres</div>
-          <div class="flex" style="gap:10px">
-            <div class="wb-bar-track" style="flex:1">
-              <div class="wb-bar-fill" style="width:{% widthratio today_wb.stress_1_10 10 100 %}%;background:{% if today_wb.stress_1_10 >= 8 %}var(--red){% elif today_wb.stress_1_10 >= 6 %}var(--orange){% else %}var(--accent){% endif %}"></div>
-            </div>
-            <span class="bold" style="min-width:32px;text-align:right">{{ today_wb.stress_1_10 }}/10</span>
+        <div class="wb-row">
+          <span class="wb-label">Stres</span>
+          <div class="wb-track">
+            <div class="wb-fill" style="width:{% widthratio today_wb.stress_1_10 10 100 %}%;background:{% if today_wb.stress_1_10 >= 8 %}var(--red){% elif today_wb.stress_1_10 >= 6 %}var(--amber){% else %}var(--accent){% endif %}"></div>
           </div>
+          <span class="wb-score" style="color:{% if today_wb.stress_1_10 >= 8 %}var(--red){% elif today_wb.stress_1_10 >= 6 %}var(--amber){% else %}var(--accent-h){% endif %}">{{ today_wb.stress_1_10 }}/10</span>
         </div>
-        <div>
-          <div class="card-title" style="margin-bottom:4px">Aktywność fizyczna</div>
-          <div class="flex" style="gap:10px">
-            <div class="wb-bar-track" style="flex:1">
-              <div class="wb-bar-fill" style="width:{% widthratio today_wb.exercise_1_10 10 100 %}%;background:{% if today_wb.exercise_1_10 >= 7 %}var(--green){% else %}var(--accent){% endif %}"></div>
-            </div>
-            <span class="bold" style="min-width:32px;text-align:right">{{ today_wb.exercise_1_10 }}/10</span>
+        <div class="wb-row">
+          <span class="wb-label">Aktywność</span>
+          <div class="wb-track">
+            <div class="wb-fill" style="width:{% widthratio today_wb.exercise_1_10 10 100 %}%;background:{% if today_wb.exercise_1_10 >= 7 %}var(--green){% else %}var(--accent){% endif %}"></div>
           </div>
+          <span class="wb-score" style="color:{% if today_wb.exercise_1_10 >= 7 %}var(--green){% else %}var(--accent-h){% endif %}">{{ today_wb.exercise_1_10 }}/10</span>
         </div>
       {% else %}
         <p class="muted">Nie wpisano jeszcze dzisiaj.</p>

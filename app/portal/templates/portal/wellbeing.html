@@ -1,41 +1,54 @@
 {% extends "portal/base.html" %}
+{% block extra_css %}
+.wb-slider-card { transition: border-color var(--t-slow); }
+.slider-wrap { padding: 12px 0 4px; }
+.slider-wrap input[type=range] { margin-bottom: 12px; }
+{% endblock %}
 {% block content %}
 <div class="stack">
-  <div class="card">
-    <h2>Samopoczucie</h2>
-    <p class="muted">Oceny z dzisiaj ({{ today }}) są brane pod uwagę przy obliczaniu ryzyka w kolejnych alertach.</p>
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Samopoczucie</h1>
+      <p class="muted small">Oceny z dziś ({{ today }}) są brane pod uwagę przy obliczaniu ryzyka.</p>
+    </div>
   </div>
 
   <form method="post">
     {% csrf_token %}
     <div class="row">
-      <div class="card">
+
+      <div class="card wb-slider-card" id="stress-card">
         <h4>Poziom stresu</h4>
         <p class="muted small">1 = brak stresu &nbsp;/&nbsp; 10 = bardzo wysoki</p>
-        <input type="range" id="stress_1_10" name="stress_1_10"
-               min="1" max="10" step="1"
-               value="{{ entry.stress_1_10|default:5 }}"
-               oninput="document.getElementById('stress_val').textContent=this.value"
-               style="margin:16px 0 8px">
+        <div class="slider-wrap">
+          <input type="range" id="stress_1_10" name="stress_1_10"
+                 min="1" max="10" step="1"
+                 value="{{ entry.stress_1_10|default:5 }}"
+                 oninput="updateSlider('stress', this.value)">
+        </div>
         <div class="slider-display">
           <span class="slider-num" id="stress_val">{{ entry.stress_1_10|default:5 }}</span>
           <span class="slider-unit">/10</span>
         </div>
+        <p class="dim small text-center" id="stress_label" style="margin-top:6px"></p>
       </div>
 
-      <div class="card">
+      <div class="card wb-slider-card" id="exercise-card">
         <h4>Aktywność fizyczna</h4>
         <p class="muted small">1 = brak aktywności &nbsp;/&nbsp; 10 = intensywna</p>
-        <input type="range" id="exercise_1_10" name="exercise_1_10"
-               min="1" max="10" step="1"
-               value="{{ entry.exercise_1_10|default:5 }}"
-               oninput="document.getElementById('exercise_val').textContent=this.value"
-               style="margin:16px 0 8px">
+        <div class="slider-wrap">
+          <input type="range" id="exercise_1_10" name="exercise_1_10"
+                 min="1" max="10" step="1"
+                 value="{{ entry.exercise_1_10|default:5 }}"
+                 oninput="updateSlider('exercise', this.value)">
+        </div>
         <div class="slider-display">
           <span class="slider-num" id="exercise_val">{{ entry.exercise_1_10|default:5 }}</span>
           <span class="slider-unit">/10</span>
         </div>
+        <p class="dim small text-center" id="exercise_label" style="margin-top:6px"></p>
       </div>
+
     </div>
 
     <div class="actions mt-2">
@@ -46,10 +59,45 @@
   {% if entry.stress_1_10 is not None or entry.exercise_1_10 is not None %}
     <div class="card">
       <p class="muted small">Ostatni zapis dzisiaj:
-        stres <b>{{ entry.stress_1_10|default:"—" }}/10</b>,
-        aktywność <b>{{ entry.exercise_1_10|default:"—" }}/10</b>
+        stres <b style="color:var(--text-2)">{{ entry.stress_1_10|default:"—" }}/10</b>,
+        aktywność <b style="color:var(--text-2)">{{ entry.exercise_1_10|default:"—" }}/10</b>
       </p>
     </div>
   {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+const stressLabels   = ['','Spokój','Spokój','Lekki','Umiarkowany','Umiarkowany','Podwyższony','Wysoki','Wysoki','Bardzo wysoki','Ekstremalny'];
+const exerciseLabels = ['','Brak','Minimalna','Lekka','Lekka','Umiarkowana','Umiarkowana','Aktywna','Aktywna','Intensywna','Maksymalna'];
+
+function sliderColor(type, v) {
+  v = parseInt(v);
+  if (type === 'stress') {
+    if (v >= 8) return 'var(--red)';
+    if (v >= 6) return 'var(--amber)';
+    return 'var(--accent-h)';
+  } else {
+    if (v >= 7) return 'var(--green)';
+    return 'var(--accent-h)';
+  }
+}
+
+function updateSlider(type, v) {
+  const col  = sliderColor(type, v);
+  const num  = document.getElementById(type + '_val');
+  const lbl  = document.getElementById(type + '_label');
+  const card = document.getElementById(type + '-card');
+  num.textContent = v;
+  num.style.color = col;
+  lbl.textContent = (type === 'stress' ? stressLabels : exerciseLabels)[v] || '';
+  card.style.setProperty('--accent-color', col);
+  // tint accent-color on range input
+  document.getElementById(type + '_1_10').style.accentColor = col;
+}
+
+// Init on load
+updateSlider('stress',   document.getElementById('stress_1_10').value);
+updateSlider('exercise', document.getElementById('exercise_1_10').value);
+</script>
 {% endblock %}
