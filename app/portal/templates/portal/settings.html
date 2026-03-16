@@ -1,7 +1,8 @@
 {% extends "portal/base.html" %}
 {% block content %}
+<div class="stack">
   <div class="card">
-    <h2>USTAWIENIA</h2>
+    <h2>Ustawienia</h2>
     <p class="muted">Numer telefonu łączy konto z danymi WeatherGuard. Preferencje alertów i cykl są opcjonalne.</p>
   </div>
 
@@ -9,51 +10,54 @@
     <form method="post">
       {% csrf_token %}
 
-      <div class="row">
-        <div>
-          <label>Nazwa wyświetlana</label>
-          <input name="display_name" value="{{ prof.display_name }}">
+      <div class="form-row">
+        <div class="field">
+          <label for="id_display_name">Nazwa wyświetlana</label>
+          <input id="id_display_name" name="display_name" value="{{ prof.display_name }}">
         </div>
-        <div>
-          <label>Telefon (E.164)</label>
-          <input name="phone_e164" value="{{ prof.phone_e164 }}">
+        <div class="field">
+          <label for="id_phone_e164">Telefon (E.164)</label>
+          <input id="id_phone_e164" name="phone_e164" value="{{ prof.phone_e164 }}" placeholder="+48123456789">
         </div>
       </div>
 
-      <div class="row">
-        <div>
-          <label>Płeć</label>
-          <select name="gender">
+      <div class="form-row">
+        <div class="field">
+          <label for="id_gender">Płeć</label>
+          <select id="id_gender" name="gender">
             {% for k,v in genders %}
               <option value="{{ k }}" {% if prof.gender == k %}selected{% endif %}>{{ v }}</option>
             {% endfor %}
           </select>
         </div>
-        <div>
+        <div class="field">
           <label>Typy alertów</label>
           <select name="enabled_alerts" multiple size="3">
             {% for a in alert_types %}
               <option value="{{ a }}" {% if a in prof.enabled_alerts %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
           </select>
-          <div class="muted small">Ctrl/⌘ aby zaznaczyć wiele.</div>
+          <span class="help">Ctrl/⌘ aby zaznaczyć wiele.</span>
         </div>
       </div>
 
-      <div class="row">
-        <div>
-          <label>Długość cyklu (dni) – tylko dla kobiet</label>
-          <input name="cycle_length_days" value="{{ prof.cycle_length_days|default:'' }}" placeholder="np. 28">
+      <hr class="divider">
+
+      <div class="form-row">
+        <div class="field">
+          <label for="id_cycle_length_days">Długość cyklu (dni) – tylko dla kobiet</label>
+          <input id="id_cycle_length_days" name="cycle_length_days" value="{{ prof.cycle_length_days|default:'' }}" placeholder="np. 28">
         </div>
-        <div>
-          <label>Data początku cyklu (YYYY-MM-DD) – tylko dla kobiet</label>
-          <input name="cycle_start_date" value="{{ prof.cycle_start_date|date:'Y-m-d' }}" placeholder="2026-02-01">
+        <div class="field">
+          <label for="id_cycle_start_date">Data początku cyklu (YYYY-MM-DD) – tylko dla kobiet</label>
+          <input id="id_cycle_start_date" name="cycle_start_date" value="{{ prof.cycle_start_date|date:'Y-m-d' }}" placeholder="2026-02-01">
         </div>
       </div>
 
-      <div style="margin-top:12px">
-        <button class="btn" type="submit">Zapisz</button>
+      <div class="actions mt-2">
+        <button class="btn" type="submit">Zapisz ustawienia</button>
       </div>
     </form>
   </div>
+</div>
 {% endblock %}

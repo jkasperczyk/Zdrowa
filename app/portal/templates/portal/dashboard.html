@@ -1,23 +1,41 @@
 {% extends "portal/base.html" %}
 {% block content %}
+<div class="stack">
   <div class="card">
     <h2>Panel użytkownika</h2>
-    <p class="muted">Zakładki: ALERTY / DANE / TRENDY / USTAWIENIA. Będziemy je rozwijać krok po kroku.</p>
-    <div class="row">
-      <div class="card">
-        <h3>Twoje dane</h3>
-        <p class="muted">Telefon: <b>{{ prof.phone_e164|default:"(ustaw w USTAWIENIA)" }}</b></p>
-        <p class="muted">Profil domyślny: <b>{{ prof.default_profile|default:"(ustaw)" }}</b></p>
-      </div>
-      <div class="card">
-        <h3>Skróty</h3>
-        <ul>
-          <li><a href="/alerts/">ALERTY</a> – status subskrypcji SMS</li>
-          <li><a href="/data/">DANE</a> – ostatnie punkty z feedback.db</li>
-          <li><a href="/trends/">TRENDY</a> – wykresy PNG dla Twojego numeru</li>
-          <li><a href="/settings/">USTAWIENIA</a> – konfiguracja profilu</li>
-        </ul>
+    <p class="muted">Monitoruj swoje zdrowie i zarządzaj alertami pogodowymi.</p>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h4>Twoje dane</h4>
+      <p class="muted">Telefon: <b>{{ prof.phone_e164|default:"(ustaw w Ustawieniach)" }}</b></p>
+      <p class="muted">Profil domyślny: <b>{{ prof.default_profile|default:"(ustaw)" }}</b></p>
+      {% if not prof.phone_e164 %}
+        <a href="{% url 'settings' %}" class="btn sm mt-2">Uzupełnij profil</a>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h4>Samopoczucie</h4>
+      <p class="muted">Dzisiejszy zapis stresu i aktywności wpływa na obliczanie ryzyka alertów.</p>
+      <a href="{% url 'wellbeing' %}" class="btn sm mt-2">Wpisz samopoczucie</a>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h4>Alerty SMS</h4>
+      <p class="muted">Status subskrypcji i historia ostatnich zdarzeń pogodowych.</p>
+      <a href="{% url 'alerts' %}" class="btn sm secondary mt-2">Przejdź do alertów</a>
+    </div>
+    <div class="card">
+      <h4>Dane & Trendy</h4>
+      <p class="muted">Surowe odczyty z WeatherGuard i wykresy PNG dla Twojego numeru.</p>
+      <div class="actions mt-2">
+        <a href="{% url 'data' %}" class="btn sm secondary">Dane</a>
+        <a href="{% url 'trends' %}" class="btn sm secondary">Trendy</a>
       </div>
     </div>
   </div>
+</div>
 {% endblock %}

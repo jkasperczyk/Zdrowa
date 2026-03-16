@@ -1,38 +1,44 @@
 {% extends "portal/base.html" %}
 {% block content %}
+<div class="stack">
   <div class="card">
-    <h2>ALERTY</h2>
-    <p class="muted">Sterowanie START/STOP + historia alertów (zdarzenia) z WeatherGuard (ostatnie 7 dni).</p>
+    <h2>Alerty</h2>
+    <p class="muted">Sterowanie START/STOP + historia alertów z WeatherGuard (ostatnie 7 dni).</p>
   </div>
 
   <div class="row">
     <div class="card">
-      <h3>Sterowanie alertami (SMS)</h3>
+      <h4>Sterowanie alertami (SMS)</h4>
 
       {% if not prof.phone_e164 %}
-        <p>Ustaw numer telefonu w <a href="/settings/">USTAWIENIA</a>.</p>
+        <p>Ustaw numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>.</p>
       {% else %}
-        <p>Status dla <b>{{ prof.phone_e164 }}</b>:
-          <b>
-          {% if status is None %}brak wpisu (domyślnie włączone){% elif status %}WŁĄCZONE{% else %}WYŁĄCZONE{% endif %}
-          </b>
+        <p class="muted">Numer: <b>{{ prof.phone_e164 }}</b></p>
+        <p class="muted" style="margin-top:6px">Status:
+          {% if status is None %}
+            <span class="badge">brak wpisu (domyślnie włączone)</span>
+          {% elif status %}
+            <span class="badge green">WŁĄCZONE</span>
+          {% else %}
+            <span class="badge red">WYŁĄCZONE</span>
+          {% endif %}
         </p>
-        <form method="post" style="display:flex;gap:10px;flex-wrap:wrap">
+        <form method="post" class="actions mt-2">
           {% csrf_token %}
-          <button class="btn" name="action" value="start" type="submit">START (włącz)</button>
-          <button class="btn secondary" name="action" value="stop" type="submit">STOP (wyłącz)</button>
+          <button class="btn sm" name="action" value="start" type="submit">START (włącz)</button>
+          <button class="btn sm secondary" name="action" value="stop" type="submit">STOP (wyłącz)</button>
         </form>
       {% endif %}
     </div>
 
     <div class="card">
-      <h3>Historia alertów (7 dni)</h3>
+      <h4>Filtr profilu</h4>
 
       {% if not prof.phone_e164 %}
-        <p class="muted">Ustaw telefon w USTAWIENIA.</p>
+        <p class="muted">Ustaw telefon w Ustawieniach.</p>
       {% else %}
-        <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
-          <div style="min-width:220px;flex:1">
+        <form method="get" class="flex" style="align-items:flex-end;gap:10px">
+          <div style="flex:1">
             <label>Profil</label>
             <select name="profile">
               <option value="" {% if not selected_profile %}selected{% endif %}>(wszystkie)</option>
@@ -41,36 +47,44 @@
               {% endfor %}
             </select>
           </div>
-          <div><button class="btn" type="submit">Filtruj</button></div>
+          <button class="btn sm" type="submit">Filtruj</button>
         </form>
+      {% endif %}
+    </div>
+  </div>
 
-        {% if events %}
+  {% if prof.phone_e164 %}
+    <div class="card">
+      <h4>Historia alertów (7 dni)</h4>
+      {% if events %}
+        <div class="table-wrap" style="margin-top:12px">
           <table>
             <thead>
               <tr>
                 <th>Czas (UTC)</th>
                 {% if has_profile %}<th>Profil</th>{% endif %}
                 <th>Score</th>
-                {% if has_threshold %}<th>Threshold</th>{% endif %}
+                {% if has_threshold %}<th>Próg</th>{% endif %}
                 {% if has_details %}<th>Szczegóły</th>{% endif %}
               </tr>
             </thead>
             <tbody>
               {% for e in events %}
                 <tr>
-                  <td>{{ e.dt }}</td>
-                  {% if has_profile %}<td>{{ e.profile }}</td>{% endif %}
-                  <td>{{ e.score }}</td>
-                  {% if has_threshold %}<td>{{ e.threshold }}</td>{% endif %}
-                  {% if has_details %}<td class="small">{{ e.details|default:e.message }}</td>{% endif %}
+                  <td class="mono small">{{ e.dt }}</td>
+                  {% if has_profile %}<td><span class="badge blue">{{ e.profile }}</span></td>{% endif %}
+                  <td><b>{{ e.score }}</b></td>
+                  {% if has_threshold %}<td class="muted">{{ e.threshold }}</td>{% endif %}
+                  {% if has_details %}<td class="small muted">{{ e.details|default:e.message }}</td>{% endif %}
                 </tr>
               {% endfor %}
             </tbody>
           </table>
-        {% else %}
-          <p>Brak alertów w ostatnich 7 dniach.</p>
-        {% endif %}
+        </div>
+      {% else %}
+        <p class="muted" style="margin-top:8px">Brak alertów w ostatnich 7 dniach.</p>
       {% endif %}
     </div>
-  </div>
+  {% endif %}
+</div>
 {% endblock %}
