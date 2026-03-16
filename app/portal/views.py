@@ -14,8 +14,10 @@ from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, FileResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
 
-from .models import UserProfile
-from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user
+from datetime import date
+
+from .models import UserProfile, DailyWellbeing
+from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user, dashboard_summary
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
 
@@ -61,7 +63,24 @@ def password_change_view(request: HttpRequest) -> HttpResponse:
 @login_required
 def dashboard(request: HttpRequest) -> HttpResponse:
     prof = _get_profile(request.user)
-    return render(request, "portal/dashboard.html", {"prof": prof})
+
+    summary: dict = {"scores": {}, "env": {}, "last_dt": None}
+    today_wb = None
+
+    if prof.phone_e164:
+        profiles = list(prof.enabled_alerts) if prof.enabled_alerts else ["migraine", "allergy", "heart"]
+        summary = dashboard_summary(settings.WEATHERGUARD_DB, prof.phone_e164, profiles)
+
+    try:
+        today_wb = DailyWellbeing.objects.get(user=request.user, day=date.today())
+    except Exception:
+        today_wb = None
+
+    return render(request, "portal/dashboard.html", {
+        "prof": prof,
+        "summary": summary,
+        "today_wb": today_wb,
+    })
 
 @login_required
 def alerts(request: HttpRequest) -> HttpResponse:

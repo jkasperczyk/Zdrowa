@@ -275,6 +275,105 @@ def write_wellbeing(
         return False
 
 
+def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str, Any]:
+    """Returns live data for the dashboard: latest score per profile + env factors.
+
+    Returns:
+        scores: dict of profile -> {score, threshold, label, dt, ts, reasons, tier}
+        env:    dict of selected env keys from feats_json of the most recent reading
+        last_dt: UTC datetime string of the most recent reading, or None
+    """
+    empty: Dict[str, Any] = {"scores": {}, "env": {}, "last_dt": None}
+    if not os.path.exists(db_path) or not profiles:
+        return empty
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "readings"):
+            return empty
+        cols = set(_cols(c, "readings"))
+        has_feats = "feats_json" in cols
+        has_label = "label" in cols
+
+        scores: Dict[str, Any] = {}
+        newest_ts = 0
+        newest_feats: Dict[str, Any] = {}
+
+        for profile in profiles:
+            sel = ["ts", "score", "threshold"]
+            if has_label:
+                sel.append("label")
+            sel.append("reasons_json")
+            if has_feats:
+                sel.append("feats_json")
+            q = (
+                f"SELECT {', '.join(sel)} FROM readings "
+                "WHERE phone=? AND profile=? ORDER BY ts DESC LIMIT 1"
+            )
+            row = c.execute(q, (phone, profile)).fetchone()
+            if not row:
+                continue
+            d = {k: row[k] for k in sel if k in row.keys()}
+
+            try:
+                reasons = json.loads(d.get("reasons_json") or "[]") or []
+            except Exception:
+                reasons = []
+
+            feats: Dict[str, Any] = {}
+            if has_feats and d.get("feats_json"):
+                try:
+                    feats = json.loads(d["feats_json"]) or {}
+                except Exception:
+                    feats = {}
+
+            ts = int(d.get("ts") or 0)
+            if ts > newest_ts:
+                newest_ts = ts
+                newest_feats = feats
+
+            score = d.get("score") or 0
+            th = d.get("threshold") or 60
+            if score >= th:
+                tier = "red"
+            elif score >= int(th * 0.6):
+                tier = "orange"
+            else:
+                tier = "green"
+
+            scores[profile] = {
+                "score": score,
+                "threshold": th,
+                "label": d.get("label") or "",
+                "dt": _utc_dt(ts) if ts else None,
+                "ts": ts,
+                "reasons": reasons[:5],
+                "tier": tier,
+            }
+
+        env: Dict[str, Any] = {}
+        if newest_feats:
+            for key in [
+                "pressure_delta_3h", "pressure_delta_6h",
+                "temp_delta_6h", "humidity_now", "gust_max_6h",
+                "aqi_us_max_6h", "pm2_5_max_6h", "pollen_max_6h",
+                "google_pollen_max", "google_pollen_type", "google_pollen_category",
+                "kp_index", "gios_index_name", "imgw_warning_level",
+            ]:
+                v = newest_feats.get(key)
+                if v is not None:
+                    env[key] = v
+
+        return {
+            "scores": scores,
+            "env": env,
+            "last_dt": _utc_dt(newest_ts) if newest_ts else None,
+        }
+    except Exception:
+        return empty
+    finally:
+        c.close()
+
+
 def last_readings(db_path: str, phone: str, profile: str, limit: int = 80):
     """Backward-compatible helper for older portal/views.py.
     Returns list of dicts with keys: ts, dt, score.
