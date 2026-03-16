@@ -210,12 +210,25 @@ def write_wellbeing(
     stress_1_10: Optional[int] = None,
     exercise_1_10: Optional[int] = None,
 ) -> bool:
-    """Upsert a user's daily wellbeing into the wellbeing table in feedback.db."""
+    """Upsert a user's daily wellbeing into the wellbeing table in feedback.db.
+    Creates the table if it doesn't exist yet (Health_Guard may not have run yet)."""
     try:
         now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
         c = sqlite3.connect(db_path)
         try:
             c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS wellbeing (
+                    phone         TEXT NOT NULL,
+                    day           TEXT NOT NULL,
+                    stress_1_10   INTEGER,
+                    exercise_1_10 INTEGER,
+                    updated_at    TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (phone, day)
+                )
+                """
+            )
             c.execute(
                 """
                 INSERT INTO wellbeing(phone, day, stress_1_10, exercise_1_10, updated_at)
