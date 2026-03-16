@@ -1,0 +1,23 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>TRENDY</h2>
+    <p class="muted">Pliki trendów filtrowane po Twoim numerze (serwowane bezpośrednio przez aplikację).</p>
+
+    {% if not prof.phone_e164 %}
+      <p>Ustaw numer telefonu w <a href="/settings/">USTAWIENIA</a>.</p>
+    {% else %}
+      {% if items %}
+        <ul>
+          {% for it in items %}
+            <li style="margin:8px 0">
+              <a href="/trends/file/{{ it.name }}/" target="_blank">{{ it.name }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>Brak trendów dla tego numeru.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endblock %}

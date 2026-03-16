@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>zdrowa.pracunia.pl</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#0b1220;color:#e7eefc;margin:0}
+    a{color:#9ad0ff;text-decoration:none}
+    .top{background:#0f1a33;border-bottom:1px solid #22355f;padding:14px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between}
+    .brand{font-weight:700;letter-spacing:.3px}
+    .nav a{margin-right:12px;padding:8px 10px;border-radius:10px}
+    .nav a.active,.nav a:hover{background:#16254a}
+    .wrap{max-width:1050px;margin:0 auto;padding:18px}
+    .card{background:#0f1a33;border:1px solid #22355f;border-radius:14px;padding:16px;margin:12px 0}
+    .muted{color:#a9b7d6}
+    .btn{background:#2b6fff;border:0;color:white;padding:10px 12px;border-radius:10px;cursor:pointer}
+    .btn.secondary{background:#22355f}
+    input,select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #22355f;background:#0b1220;color:#e7eefc}
+    label{display:block;margin:10px 0 6px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #22355f;padding:10px;text-align:left;font-size:14px}
+    .msg{padding:10px 12px;border-radius:10px;margin:10px 0;background:#16254a;border:1px solid #22355f}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media (max-width: 800px){.row{grid-template-columns:1fr}}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#16254a;border:1px solid #22355f;font-size:12px;margin-left:6px}
+  </style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">zdrowa.pracunia.pl</div>
+    <div class="nav">
+      {% if request.user.is_authenticated %}
+        <a href="/" class="{% if request.path == '/' %}active{% endif %}">HOME</a>
+        <a href="/alerts/" class="{% if '/alerts' in request.path %}active{% endif %}">ALERTY</a>
+        <a href="/data/" class="{% if '/data' in request.path %}active{% endif %}">DANE</a>
+        <a href="/trends/" class="{% if '/trends' in request.path %}active{% endif %}">TRENDY</a>
+        <a href="/settings/" class="{% if '/settings' in request.path %}active{% endif %}">USTAWIENIA</a>
+        {% if request.user.is_staff %}
+          <a href="/admin-tools/" class="{% if '/admin-tools' in request.path %}active{% endif %}">ADMIN<span class="pill">tools</span></a>
+        {% endif %}
+        <a href="/logout/">WYLOGUJ</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="wrap">
+    {% for message in messages %}
+      <div class="msg">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

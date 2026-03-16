@@ -1,0 +1,25 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>DANE</h2>
+    <p class="muted">Źródło: feedback.db (readings/alerts), filtrowane po Twoim numerze i profilu.</p>
+
+    {% if not prof.phone_e164 %}
+      <p>Ustaw numer telefonu w <a href="/settings/">USTAWIENIA</a>.</p>
+    {% else %}
+      <p>Telefon: <b>{{ prof.phone_e164 }}</b>, profil: <b>{{ prof.default_profile }}</b></p>
+      {% if rows %}
+        <table>
+          <thead><tr><th>Czas (UTC)</th><th>Score</th></tr></thead>
+          <tbody>
+            {% for r in rows %}
+              <tr><td>{{ r.dt }}</td><td>{{ r.score }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>Brak danych do pokazania.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>USTAWIENIA</h2>
+    <form method="post">
+      {% csrf_token %}
+      <div class="row">
+        <div>
+          <label>Nazwa wyświetlana</label>
+          <input name="display_name" value="{{ prof.display_name }}">
+        </div>
+        <div>
+          <label>Telefon (E.164, np. +4879...)</label>
+          <input name="phone_e164" value="{{ prof.phone_e164 }}">
+        </div>
+      </div>
+      <label>Domyślny profil</label>
+      <select name="default_profile">
+        {% for p in "migraine allergy heart".split %}
+          <option value="{{ p }}" {% if prof.default_profile == p %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+      <div style="margin-top:12px">
+        <button class="btn" type="submit">Zapisz</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

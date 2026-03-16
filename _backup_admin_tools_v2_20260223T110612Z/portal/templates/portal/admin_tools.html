@@ -1,0 +1,73 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>ADMIN TOOLS – Użytkownicy</h2>
+    <p class="muted">Tworzenie kont i import z WeatherGuard users.txt. Hasła tymczasowe pokażemy po utworzeniu.</p>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h3>1) Dodaj użytkownika</h3>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        {{ create_form.as_p }}
+        <button class="btn" type="submit">Utwórz konto</button>
+      </form>
+
+      {% if created %}
+        <div class="card">
+          <h4>Utworzone</h4>
+          <table>
+            <thead><tr><th>Login</th><th>Hasło</th><th>Telefon</th></tr></thead>
+            <tbody>
+              {% for c in created %}
+                <tr><td>{{ c.username }}</td><td><code>{{ c.password }}</code></td><td>{{ c.phone }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="muted">Hasło przekaż użytkownikowi. Docelowo dopniemy reset hasła / 2FA.</p>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>2) Import z /opt/weatherguard/config/users.txt</h3>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="import">
+        {{ import_form.as_p }}
+        <button class="btn" type="submit">Importuj</button>
+      </form>
+
+      {% if imported %}
+        <div class="card">
+          <h4>Wynik importu</h4>
+          <table>
+            <thead><tr><th>Login</th><th>Telefon</th><th>Nowy?</th><th>Hasło (tylko nowe)</th></tr></thead>
+            <tbody>
+              {% for it in imported %}
+                <tr>
+                  <td>{{ it.username }}</td>
+                  <td>{{ it.phone }}</td>
+                  <td>{{ it.new }}</td>
+                  <td>{% if it.password %}<code>{{ it.password }}</code>{% else %}-{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+
+      <div class="card">
+        <h4>Format users.txt (tolerancyjny parser)</h4>
+        <p class="muted">Obsługuje linie typu:</p>
+        <ul>
+          <li><code>Jan Kowalski; +48790123456; migraine</code></li>
+          <li><code>anna@ex.com, +48790123456, allergy</code></li>
+          <li><code>{"name":"Jan Kowalski","phone":"+4879...","alerts":["migraine","heart"],"email":"jan@ex.com"}</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock %}

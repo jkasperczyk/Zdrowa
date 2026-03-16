@@ -1,0 +1,17 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Logowanie</h2>
+    <p class="muted">Użyj loginu (np. e-mail) i hasła. Admin tworzy konta użytkowników.</p>
+    <form method="post">
+      {% csrf_token %}
+      <label>Login</label>
+      <input name="username" autocomplete="username" required>
+      <label>Hasło</label>
+      <input name="password" type="password" autocomplete="current-password" required>
+      <div style="margin-top:12px">
+        <button class="btn" type="submit">Zaloguj</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

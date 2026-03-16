@@ -1,0 +1,59 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>USTAWIENIA</h2>
+    <p class="muted">Numer telefonu łączy konto z danymi WeatherGuard. Preferencje alertów i cykl są opcjonalne.</p>
+  </div>
+
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="row">
+        <div>
+          <label>Nazwa wyświetlana</label>
+          <input name="display_name" value="{{ prof.display_name }}">
+        </div>
+        <div>
+          <label>Telefon (E.164)</label>
+          <input name="phone_e164" value="{{ prof.phone_e164 }}">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Płeć</label>
+          <select name="gender">
+            {% for k,v in genders %}
+              <option value="{{ k }}" {% if prof.gender == k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label>Typy alertów</label>
+          <select name="enabled_alerts" multiple size="3">
+            {% for a in alert_types %}
+              <option value="{{ a }}" {% if a in prof.enabled_alerts %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+          </select>
+          <div class="muted small">Ctrl/⌘ aby zaznaczyć wiele.</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Długość cyklu (dni) – tylko dla kobiet</label>
+          <input name="cycle_length_days" value="{{ prof.cycle_length_days|default:'' }}" placeholder="np. 28">
+        </div>
+        <div>
+          <label>Data początku cyklu (YYYY-MM-DD) – tylko dla kobiet</label>
+          <input name="cycle_start_date" value="{{ prof.cycle_start_date|date:'Y-m-d' }}" placeholder="2026-02-01">
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <button class="btn" type="submit">Zapisz</button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

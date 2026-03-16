@@ -1,0 +1,17 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Modyfikuj użytkownika</h2>
+    <p class="muted">Login: <b>{{ target.username }}</b></p>
+    <p><a href="/admin-tools/">← powrót</a></p>
+  </div>
+
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button class="btn" type="submit">Zapisz</button>
+      <a class="btn secondary" href="/admin-tools/">Anuluj</a>
+    </form>
+  </div>
+{% endblock %}

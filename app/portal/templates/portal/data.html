@@ -1,0 +1,55 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>DANE</h2>
+    <p class="muted">Bieżące odczyty (readings) z WeatherGuard – ostatnie 7 dni, niezależnie od progów alertów.</p>
+
+    {% if not prof.phone_e164 %}
+      <p>Ustaw numer telefonu w <a href="/settings/">USTAWIENIA</a>.</p>
+    {% else %}
+      <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+        <div style="min-width:220px;flex:1">
+          <label>Profil (rodzaj danych)</label>
+          <select name="profile">
+            {% for p in profiles %}
+              <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div><button class="btn" type="submit">Filtruj</button></div>
+      </form>
+
+      <div class="card">
+        <p class="muted">Telefon: <b>{{ prof.phone_e164 }}</b> | profil: <b>{{ selected_profile }}</b> | okres: <b>7 dni</b></p>
+        {% if rows %}
+          <table>
+            <thead>
+              <tr>
+                <th>Czas (UTC)</th>
+                <th>Score</th>
+                {% if has_value %}<th>Value</th>{% endif %}
+                {% if has_risk %}<th>Risk</th>{% endif %}
+                {% if has_threshold %}<th>Threshold</th>{% endif %}
+                {% if has_details %}<th>Details</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+                <tr>
+                  <td>{{ r.dt }}</td>
+                  <td>{{ r.score }}</td>
+                  {% if has_value %}<td>{{ r.value }}</td>{% endif %}
+                  {% if has_risk %}<td>{{ r.risk }}</td>{% endif %}
+                  {% if has_threshold %}<td>{{ r.threshold }}</td>{% endif %}
+                  {% if has_details %}<td class="small">{{ r.details }}</td>{% endif %}
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p>Brak odczytów w ostatnich 7 dniach dla tego profilu.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

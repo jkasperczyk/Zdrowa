@@ -1,0 +1,23 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>Panel użytkownika</h2>
+    <p class="muted">Zakładki: ALERTY / DANE / TRENDY / USTAWIENIA. Będziemy je rozwijać krok po kroku.</p>
+    <div class="row">
+      <div class="card">
+        <h3>Twoje dane</h3>
+        <p class="muted">Telefon: <b>{{ prof.phone_e164|default:"(ustaw w USTAWIENIA)" }}</b></p>
+        <p class="muted">Profil domyślny: <b>{{ prof.default_profile|default:"(ustaw)" }}</b></p>
+      </div>
+      <div class="card">
+        <h3>Skróty</h3>
+        <ul>
+          <li><a href="/alerts/">ALERTY</a> – status subskrypcji SMS</li>
+          <li><a href="/data/">DANE</a> – ostatnie punkty z feedback.db</li>
+          <li><a href="/trends/">TRENDY</a> – wykresy PNG dla Twojego numeru</li>
+          <li><a href="/settings/">USTAWIENIA</a> – konfiguracja profilu</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock %}

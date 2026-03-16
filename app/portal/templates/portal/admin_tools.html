@@ -1,0 +1,114 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>ADMIN TOOLS – Użytkownicy</h2>
+    <p class="muted">Hasła: reset tymczasowy + wymuszona zmiana przy logowaniu (/password/change/).</p>
+  </div>
+
+  <div class="card">
+    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+      <div style="flex:1;min-width:260px">
+        <label>Wyszukaj</label>
+        <input name="q" value="{{ q }}" placeholder="login / e-mail / telefon / imię / nazwisko">
+      </div>
+      <div>
+        <button class="btn" type="submit">Szukaj</button>
+        <a class="btn secondary" href="/admin-tools/">Wyczyść</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Lista użytkowników</h3>
+    {% if users_rows %}
+      <table>
+        <thead>
+          <tr>
+            <th>Login</th>
+            <th>Dane</th>
+            <th>Alerty</th>
+            <th>Status</th>
+            <th>Akcje</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users_rows %}
+            <tr>
+              <td><b>{{ u.username }}</b><br><span class="muted small">{{ u.email }}</span></td>
+              <td class="small">
+                <div>{{ u.name|default:"(brak)" }}</div>
+                <div class="muted">tel: {{ u.phone|default:"-" }}</div>
+              </td>
+              <td class="small">
+                {% if u.alerts %}
+                  {% for a in u.alerts %}<span class="badge">{{ a }}</span>{% endfor %}
+                {% else %}
+                  <span class="muted">—</span>
+                {% endif %}
+              </td>
+              <td class="small">
+                {% if u.active %}<span class="badge">AKTYWNY</span>{% else %}<span class="badge">ZABLOKOWANY</span>{% endif %}
+                {% if u.sms_enabled %}<span class="badge">SMS:ON</span>{% else %}<span class="badge">SMS:OFF</span>{% endif %}
+              </td>
+              <td>
+                <div class="actions">
+                  <a class="btn" href="/admin-tools/user/{{ u.id }}/">Modyfikuj</a>
+
+                  <form method="post" style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="reset_password">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <button class="btn" type="submit">RESET HASŁA</button>
+                  </form>
+
+                  <form method="post" style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="toggle_active">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <button class="btn secondary" type="submit">{% if u.active %}Zablokuj{% else %}Odblokuj{% endif %}</button>
+                  </form>
+
+                  <form method="post" style="display:inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="user_id" value="{{ u.id }}">
+                    <label class="small" style="display:flex;gap:6px;align-items:center;margin:0">
+                      {{ delete_form.confirm_delete }} usuń
+                    </label>
+                    <button class="btn danger" type="submit">Skasuj</button>
+                  </form>
+                </div>
+                <div class="muted small" style="margin-top:6px">Reset pokaże hasło tymczasowe adminowi i wymusi zmianę po logowaniu.</div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">Brak wyników.</p>
+    {% endif %}
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h3>Dodaj użytkownika</h3>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        {{ create_form.as_p }}
+        <button class="btn" type="submit">Utwórz konto</button>
+      </form>
+      <p class="muted small">Po utworzeniu hasło tymczasowe dostaniesz w komunikacie na górze.</p>
+    </div>
+
+    <div class="card">
+      <h3>Import users.txt</h3>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="import">
+        {{ import_form.as_p }}
+        <button class="btn" type="submit">Importuj (dedupe)</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

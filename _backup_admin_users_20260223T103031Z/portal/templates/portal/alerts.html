@@ -1,0 +1,22 @@
+{% extends "portal/base.html" %}
+{% block content %}
+  <div class="card">
+    <h2>ALERTY</h2>
+    <p class="muted">Steruje subskrypcją SMS w pliku: /opt/weatherguard/data/sms_users.json</p>
+
+    {% if not prof.phone_e164 %}
+      <p>Ustaw numer telefonu w <a href="/settings/">USTAWIENIA</a>.</p>
+    {% else %}
+      <p>Status dla <b>{{ prof.phone_e164 }}</b>:
+        <b>
+        {% if status is None %}brak wpisu (domyślnie włączone){% elif status %}WŁĄCZONE{% else %}WYŁĄCZONE{% endif %}
+        </b>
+      </p>
+      <form method="post" style="display:flex;gap:10px;flex-wrap:wrap">
+        {% csrf_token %}
+        <button class="btn" name="action" value="start" type="submit">START (włącz)</button>
+        <button class="btn secondary" name="action" value="stop" type="submit">STOP (wyłącz)</button>
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
