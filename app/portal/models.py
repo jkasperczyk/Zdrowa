@@ -10,7 +10,6 @@ class UserProfile(models.Model):
     ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
-    display_name = models.CharField(max_length=120, blank=True, default="")
     phone_e164 = models.CharField(max_length=32, blank=True, default="", help_text="E.164, np. +4879...")
 
     default_profile = models.CharField(max_length=32, blank=True, default="migraine")

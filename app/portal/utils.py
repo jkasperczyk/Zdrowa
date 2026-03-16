@@ -101,6 +101,8 @@ _FEMALE_VOC: dict[str, str] = {
     "Dorota": "Doroto",
     # Lucja / Lucia
     "Lucja": "Lucjo", "Lucia": "Luciu",
+    # Stefania → familiar Stefko
+    "Stefania": "Stefko",
     # Renata
     "Renata": "Renato",
     # Edyta
@@ -290,9 +292,9 @@ def greeting(first_name: str, gender: str) -> str | None:
     voc = vocative(first_name, gender)
 
     if 5 <= hour < 12:
-        return f"Dzień dobry, {voc}!"
+        return f"Dzień dobry, {voc}! ☀️"
     if 12 <= hour < 18:
-        return f"Cześć, {voc}!"
+        return f"Cześć, {voc}! 👋"
     if 18 <= hour < 22:
-        return f"Dobry wieczór, {voc}!"
-    return f"Dobranoc, {voc}"
+        return f"Dobry wieczór, {voc}! 🌆"
+    return f"Dobranoc, {voc} 🌙"

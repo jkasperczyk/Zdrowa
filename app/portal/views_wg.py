@@ -17,6 +17,7 @@ from .wg_sources import (
     alerts_last_days,
     available_profiles,
     write_wellbeing,
+    write_wg_user,
 )
 
 def _get_profile(user) -> UserProfile:
@@ -117,13 +118,25 @@ def settings_view(request: HttpRequest) -> HttpResponse:
     alert_types = ["migraine","allergy","heart"]
 
     if request.method == "POST":
-        prof.display_name = (request.POST.get("display_name") or "").strip()
+        # ── Auth user fields ──────────────────────────────────────────
+        user = request.user
+        user.first_name = (request.POST.get("first_name") or "").strip()
+        user.last_name  = (request.POST.get("last_name")  or "").strip()
+        user.save(update_fields=["first_name", "last_name"])
+
+        # ── Profile fields ────────────────────────────────────────────
         prof.phone_e164 = (request.POST.get("phone_e164") or "").strip()
-        prof.gender = (request.POST.get("gender") or "unspecified").strip()
+        prof.gender     = (request.POST.get("gender")     or "unspecified").strip()
 
         enabled = request.POST.getlist("enabled_alerts") or []
         prof.enabled_alerts = [a for a in enabled if a in alert_types]
         prof.default_profile = (prof.enabled_alerts[0] if prof.enabled_alerts else (prof.default_profile or "migraine"))
+
+        prof.sms_enabled = request.POST.get("sms_enabled") == "on"
+        prof.location    = (request.POST.get("location") or "").strip()
+        raw_thr = (request.POST.get("alert_threshold") or "").strip()
+        prof.alert_threshold = int(raw_thr) if raw_thr.isdigit() else None
+        prof.quiet_hours = (request.POST.get("quiet_hours") or "").strip()
 
         if prof.gender == "female":
             cl = (request.POST.get("cycle_length_days") or "").strip()
@@ -138,6 +151,22 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             prof.cycle_start_date = None
 
         prof.save()
+
+        if prof.phone_e164:
+            try:
+                set_sms_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, prof.sms_enabled)
+                write_wg_user(
+                    settings.WEATHERGUARD_DB,
+                    phone=prof.phone_e164,
+                    profiles=prof.enabled_alerts or ["migraine"],
+                    location=prof.location,
+                    threshold=prof.alert_threshold,
+                    quiet_hours=prof.quiet_hours or None,
+                    enabled=prof.sms_enabled,
+                )
+            except Exception:
+                pass
+
         messages.success(request, "Zapisano ustawienia.")
         return redirect("settings")
 

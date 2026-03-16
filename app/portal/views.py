@@ -149,7 +149,9 @@ def settings_view(request: HttpRequest) -> HttpResponse:
     alert_types = ["migraine", "allergy", "heart"]
 
     if request.method == "POST":
-        prof.display_name = request.POST.get("display_name", "").strip()
+        request.user.first_name = request.POST.get("first_name", "").strip()
+        request.user.last_name  = request.POST.get("last_name",  "").strip()
+        request.user.save(update_fields=["first_name", "last_name"])
         prof.phone_e164 = request.POST.get("phone_e164", "").strip()
         prof.gender = request.POST.get("gender", "unspecified").strip()
         prof.enabled_alerts = request.POST.getlist("enabled_alerts")

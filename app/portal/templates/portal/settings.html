@@ -14,9 +14,15 @@
       <p class="section-title" style="margin-top:0">Profil osobowy</p>
       <div class="form-row">
         <div class="field">
-          <label for="id_display_name">Nazwa wyświetlana</label>
-          <input id="id_display_name" name="display_name" value="{{ prof.display_name }}">
+          <label for="id_first_name">Imię</label>
+          <input id="id_first_name" name="first_name" value="{{ request.user.first_name }}">
         </div>
+        <div class="field">
+          <label for="id_last_name">Nazwisko</label>
+          <input id="id_last_name" name="last_name" value="{{ request.user.last_name }}">
+        </div>
+      </div>
+      <div class="form-row">
         <div class="field">
           <label for="id_phone_e164">Telefon (E.164)</label>
           <input id="id_phone_e164" name="phone_e164" value="{{ prof.phone_e164 }}" placeholder="+48123456789">

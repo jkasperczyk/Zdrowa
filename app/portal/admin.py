@@ -3,8 +3,8 @@ from .models import UserProfile, DailyWellbeing
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "display_name", "phone_e164", "gender", "sms_enabled", "default_profile", "updated_at")
-    search_fields = ("user__username", "user__email", "display_name", "phone_e164")
+    list_display = ("user", "phone_e164", "gender", "sms_enabled", "default_profile", "updated_at")
+    search_fields = ("user__username", "user__email", "user__first_name", "user__last_name", "phone_e164")
     list_filter = ("gender", "sms_enabled", "default_profile")
 
 @admin.register(DailyWellbeing)
