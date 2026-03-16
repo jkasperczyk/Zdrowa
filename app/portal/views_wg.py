@@ -9,13 +9,14 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render, redirect
 
-from .models import UserProfile
+from .models import UserProfile, DailyWellbeing
 from .wg_sources import (
     sms_subscription_status,
     set_sms_subscription,
     readings_last_days,
     alerts_last_days,
     available_profiles,
+    write_wellbeing,
 )
 
 def _get_profile(user) -> UserProfile:
@@ -141,3 +142,42 @@ def settings_view(request: HttpRequest) -> HttpResponse:
         return redirect("settings")
 
     return render(request, "portal/settings.html", {"prof": prof, "genders": genders, "alert_types": alert_types})
+
+
+@login_required
+def wellbeing_view(request: HttpRequest) -> HttpResponse:
+    prof = _get_profile(request.user)
+    today = date.today()
+
+    # Load existing entry for today if present
+    entry, _ = DailyWellbeing.objects.get_or_create(user=request.user, day=today)
+
+    if request.method == "POST":
+        def _int_or_none(key: str) -> Optional[int]:
+            v = (request.POST.get(key) or "").strip()
+            try:
+                n = int(v)
+                return n if 1 <= n <= 10 else None
+            except ValueError:
+                return None
+
+        stress = _int_or_none("stress_1_10")
+        exercise = _int_or_none("exercise_1_10")
+
+        entry.stress_1_10 = stress
+        entry.exercise_1_10 = exercise
+        entry.save()
+
+        if prof.phone_e164:
+            write_wellbeing(
+                settings.WEATHERGUARD_DB,
+                phone=prof.phone_e164,
+                day=today.isoformat(),
+                stress_1_10=stress,
+                exercise_1_10=exercise,
+            )
+
+        messages.success(request, "Zapisano samopoczucie na dziś.")
+        return redirect("wellbeing")
+
+    return render(request, "portal/wellbeing.html", {"prof": prof, "entry": entry, "today": today})

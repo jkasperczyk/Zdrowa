@@ -1,0 +1,48 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Samopoczucie — {{ today }}</h2>
+  <p class="muted">Oceny z dzisiaj są brane pod uwagę przy obliczaniu ryzyka w kolejnych alertach.</p>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <div class="row" style="margin-top:16px">
+      <div class="card">
+        <label for="stress_1_10"><b>Poziom stresu</b> <span class="muted">(1 = brak, 10 = bardzo wysoki)</span></label>
+        <input type="range" id="stress_1_10" name="stress_1_10"
+               min="1" max="10" step="1"
+               value="{{ entry.stress_1_10|default:5 }}"
+               oninput="document.getElementById('stress_val').textContent=this.value"
+               style="width:100%;accent-color:#2b6fff;margin:10px 0">
+        <div style="text-align:center;font-size:22px;font-weight:700">
+          <span id="stress_val">{{ entry.stress_1_10|default:5 }}</span><span class="muted">/10</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <label for="exercise_1_10"><b>Aktywność fizyczna</b> <span class="muted">(1 = brak, 10 = intensywna)</span></label>
+        <input type="range" id="exercise_1_10" name="exercise_1_10"
+               min="1" max="10" step="1"
+               value="{{ entry.exercise_1_10|default:5 }}"
+               oninput="document.getElementById('exercise_val').textContent=this.value"
+               style="width:100%;accent-color:#2b6fff;margin:10px 0">
+        <div style="text-align:center;font-size:22px;font-weight:700">
+          <span id="exercise_val">{{ entry.exercise_1_10|default:5 }}</span><span class="muted">/10</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <button type="submit" class="btn">Zapisz samopoczucie</button>
+    </div>
+  </form>
+
+  {% if entry.stress_1_10 is not None or entry.exercise_1_10 is not None %}
+  <div class="card" style="margin-top:16px">
+    <p class="muted small">Ostatni zapis: stres <b>{{ entry.stress_1_10|default:"—" }}/10</b>,
+    aktywność <b>{{ entry.exercise_1_10|default:"—" }}/10</b></p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

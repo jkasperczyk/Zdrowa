@@ -203,6 +203,38 @@ def write_wg_user(
         return False
 
 
+def write_wellbeing(
+    db_path: str,
+    phone: str,
+    day: str,
+    stress_1_10: Optional[int] = None,
+    exercise_1_10: Optional[int] = None,
+) -> bool:
+    """Upsert a user's daily wellbeing into the wellbeing table in feedback.db."""
+    try:
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                INSERT INTO wellbeing(phone, day, stress_1_10, exercise_1_10, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(phone, day) DO UPDATE SET
+                    stress_1_10   = excluded.stress_1_10,
+                    exercise_1_10 = excluded.exercise_1_10,
+                    updated_at    = excluded.updated_at
+                """,
+                (phone, day, stress_1_10, exercise_1_10, now),
+            )
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception:
+        return False
+
+
 def last_readings(db_path: str, phone: str, profile: str, limit: int = 80):
     """Backward-compatible helper for older portal/views.py.
     Returns list of dicts with keys: ts, dt, score.

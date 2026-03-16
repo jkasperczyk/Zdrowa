@@ -9,6 +9,7 @@ urlpatterns = [
     path("trends/", views.trends, name="trends"),
     path("trends/file/<str:fname>/", views.trend_file, name="trend_file"),
     path("settings/", views_wg.settings_view, name="settings"),
+    path("wellbeing/", views_wg.wellbeing_view, name="wellbeing"),
 
     path("password/change/", views.password_change_view, name="password_change"),
 
