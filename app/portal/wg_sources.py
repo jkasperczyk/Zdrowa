@@ -4,6 +4,68 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, Set
 
+
+# ── AI cache helpers ──────────────────────────────────────────────────────────
+
+def _ensure_ai_cache_table(c: sqlite3.Connection) -> None:
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS ai_cache (
+            cache_key TEXT PRIMARY KEY,
+            response  TEXT,
+            model     TEXT,
+            created_at TEXT,
+            expires_at TEXT
+        )
+    """)
+    c.commit()
+
+
+def _get_ai_cache(db_path: str, cache_key: str) -> Optional[str]:
+    if not db_path or not os.path.exists(db_path):
+        return None
+    try:
+        c = sqlite3.connect(db_path)
+        try:
+            row = c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_cache'").fetchone()
+            if not row:
+                return None
+            now = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            row = c.execute(
+                "SELECT response FROM ai_cache WHERE cache_key=? AND expires_at > ?",
+                (cache_key, now),
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            c.close()
+    except Exception:
+        return None
+
+
+def _set_ai_cache(db_path: str, cache_key: str, response: str, model: str, ttl_seconds: int) -> None:
+    if not db_path:
+        return
+    try:
+        c = sqlite3.connect(db_path)
+        try:
+            _ensure_ai_cache_table(c)
+            now = datetime.now(tz=timezone.utc)
+            created_at = now.strftime("%Y-%m-%dT%H:%M:%S")
+            expires_at = (
+                "2099-12-31T00:00:00"
+                if ttl_seconds <= 0
+                else (now + timedelta(seconds=ttl_seconds)).strftime("%Y-%m-%dT%H:%M:%S")
+            )
+            c.execute(
+                "INSERT OR REPLACE INTO ai_cache (cache_key, response, model, created_at, expires_at) VALUES (?,?,?,?,?)",
+                (cache_key, response, model, created_at, expires_at),
+            )
+            c.commit()
+        finally:
+            c.close()
+    except Exception:
+        pass
+
+
 def _connect_feedback(db_path: str) -> sqlite3.Connection:
     c = sqlite3.connect(db_path)
     c.row_factory = sqlite3.Row
@@ -1015,10 +1077,56 @@ def save_weekly_report(db_path: str, phone: str, week_start: str, week_end: str,
 
 # ── Contextual daily tips ──────────────────────────────────────────────────────
 
-def generate_daily_tip(scores: Dict[str, Any], env_data: Dict[str, Any], profiles: List[str]) -> Optional[str]:
-    """Generate a short rule-based contextual tip based on current conditions."""
-    tips = []
+def generate_daily_tip(
+    scores: Dict[str, Any],
+    env_data: Dict[str, Any],
+    profiles: List[str],
+    db_path: str = "",
+    phone: str = "",
+) -> Optional[str]:
+    """Generate a short contextual tip. Tries AI (Haiku, 1h cache) first, falls back to rule-based."""
 
+    # --- AI path ---
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if api_key and db_path:
+        hour_key = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H")
+        cache_key = f"tip:{phone or 'anon'}:{hour_key}"
+        cached = _get_ai_cache(db_path, cache_key)
+        if cached:
+            return cached
+        try:
+            from anthropic import Anthropic
+            model = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-4-5-20251001")
+            pressure_delta = env_data.get("pressure_delta_6h")
+            aqi = env_data.get("aqi_us_max_6h") or 0
+            pollen = env_data.get("google_pollen_max") or env_data.get("pollen_max_6h") or 0
+            gp_type = env_data.get("google_pollen_type") or "pyłki"
+            max_score = max(
+                (scores.get(p, {}).get("score", 0) for p in profiles if scores.get(p)),
+                default=0,
+            )
+            prompt = (
+                f"Wygeneruj 1-2 krótkie, konkretne, praktyczne porady zdrowotne po polsku "
+                f"dla użytkownika monitorującego profile: {', '.join(profiles)}. "
+                f"Aktualne dane: zmiana ciśnienia={pressure_delta} hPa/6h, AQI={aqi}, "
+                f"pyłki={pollen} ({gp_type}), najwyższy wynik ryzyka={max_score}/100. "
+                f"Odpowiedź: tylko porady, bez wstępu i nagłówka, maksymalnie 2 zdania."
+            )
+            client = Anthropic(api_key=api_key)
+            msg = client.messages.create(
+                model=model,
+                max_tokens=150,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            tip = (msg.content[0].text or "").strip()
+            if tip:
+                _set_ai_cache(db_path, cache_key, tip, model, 3600)
+                return tip
+        except Exception:
+            pass
+
+    # --- Rule-based fallback ---
+    tips = []
     has_allergy = "allergy" in profiles
     has_migraine = "migraine" in profiles
     has_heart = "heart" in profiles
@@ -1041,34 +1149,102 @@ def generate_daily_tip(scores: Dict[str, Any], env_data: Dict[str, Any], profile
     except Exception:
         pressure_delta = None
 
-    # High pollen + allergy
     if has_allergy and pollen >= 40:
         gp_type = env_data.get("google_pollen_type") or "pyłków"
         tips.append(f"Wysokie stężenie {gp_type.lower()} — rozważ lek antyhistaminowy przed wyjściem.")
 
-    # Falling pressure + migraine
     if has_migraine and pressure_delta is not None and pressure_delta <= -4:
         tips.append(f"Ciśnienie spada ({pressure_delta:+.1f} hPa/6h) — unikaj alkoholu i zadbaj o nawodnienie.")
 
-    # Bad AQI + heart
     if has_heart and aqi >= 101:
         tips.append(f"Słaba jakość powietrza (AQI {aqi:.0f}) — ogranicz wysiłek na zewnątrz.")
 
-    # Good conditions
     if not tips:
-        allergy_s = scores.get("allergy", {})
-        migraine_s = scores.get("migraine", {})
-        heart_s = scores.get("heart", {})
-        all_scores = [
-            allergy_s.get("score", 0) if allergy_s else 0,
-            migraine_s.get("score", 0) if migraine_s else 0,
-            heart_s.get("score", 0) if heart_s else 0,
-        ]
-        max_score = max(s for s in all_scores if s)
-        if max_score < 30:
+        all_scores = [scores.get(p, {}).get("score", 0) for p in profiles if scores.get(p)]
+        if all_scores and max(all_scores) < 30:
             tips.append("Warunki sprzyjające — dobry dzień na aktywność na świeżym powietrzu!")
 
     return tips[0] if tips else None
+
+
+def get_ai_risk_summary(
+    db_path: str,
+    profile: str,
+    score: int,
+    reasons: List[str],
+    ts: int = 0,
+) -> Optional[str]:
+    """One-sentence AI summary for a risk reading, cached permanently per reading timestamp."""
+    if not db_path or score == 0:
+        return None
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
+
+    cache_key = f"risk_summary:{profile}:{ts}" if ts else ""
+    if cache_key:
+        cached = _get_ai_cache(db_path, cache_key)
+        if cached is not None:
+            return cached
+
+    try:
+        from anthropic import Anthropic
+        model = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-4-5-20251001")
+        reasons_str = "; ".join(reasons[:4]) if reasons else "brak danych"
+        prompt = (
+            f"Napisz jedno zdanie po polsku podsumowujące ryzyko zdrowotne: "
+            f"profil={profile}, wynik={score}/100, główne czynniki: {reasons_str}. "
+            f"Tylko jedno zdanie, bez nagłówka."
+        )
+        client = Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=80,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        summary = (msg.content[0].text or "").strip()
+        if summary and cache_key:
+            _set_ai_cache(db_path, cache_key, summary, model, 0)  # permanent
+        return summary or None
+    except Exception:
+        return None
+
+
+def generate_symptom_feedback(
+    db_path: str,
+    phone: str,
+    profile: str,
+    severity: int,
+    notes: str,
+    env_data: Dict[str, Any],
+) -> Optional[str]:
+    """AI-generated acknowledgment after a symptom report. Never cached (always fresh)."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
+    try:
+        from anthropic import Anthropic
+        model = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-4-5-20251001")
+        pressure_delta = env_data.get("pressure_delta_6h")
+        aqi = env_data.get("aqi_us_max_6h") or 0
+        pollen = env_data.get("google_pollen_max") or env_data.get("pollen_max_6h") or 0
+        note_part = f", notatka: '{notes}'" if notes else ""
+        prompt = (
+            f"Użytkownik z profilem '{profile}' zgłosił dolegliwość: nasilenie {severity}/10{note_part}. "
+            f"Warunki środowiskowe: zmiana ciśnienia={pressure_delta} hPa/6h, AQI={aqi}, pyłki={pollen}. "
+            f"Napisz 1-2 zdania po polsku z empatycznym komentarzem dlaczego obecne warunki mogły "
+            f"przyczynić się do dolegliwości i jedną praktyczną wskazówką. "
+            f"Bez nagłówka. Nie stawiaj diagnozy."
+        )
+        client = Anthropic(api_key=api_key)
+        msg = client.messages.create(
+            model=model,
+            max_tokens=150,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return (msg.content[0].text or "").strip() or None
+    except Exception:
+        return None
 
 
 # ── Correlation data (for correlation dashboard) ───────────────────────────────

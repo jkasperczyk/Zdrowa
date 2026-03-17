@@ -27,6 +27,7 @@ from .wg_sources import (
     get_weekly_reports,
     save_weekly_report,
     correlation_data,
+    generate_symptom_feedback,
 )
 
 ALERT_PROFILES = ["migraine", "allergy", "heart"]
@@ -324,6 +325,17 @@ def symptom_log_view(request: HttpRequest) -> HttpResponse:
             )
             if ok:
                 messages.success(request, "Dolegliwość zapisana.")
+                try:
+                    _env = {k: current_feats.get(k) for k in [
+                        "pressure_delta_6h", "aqi_us_max_6h", "google_pollen_max", "pollen_max_6h",
+                    ] if current_feats and current_feats.get(k) is not None}
+                    _fb = generate_symptom_feedback(
+                        settings.WEATHERGUARD_DB, prof.phone_e164, profile, severity, notes or "", _env
+                    )
+                    if _fb:
+                        messages.info(request, _fb)
+                except Exception:
+                    pass
             else:
                 messages.warning(request, "Nie udało się zapisać dolegliwości.")
         return redirect("symptom_log")
@@ -391,34 +403,35 @@ def _generate_report_for_user(phone: str) -> bool:
     avg_score = round(sum(r.get("score", 0) for r in readings) / len(readings)) if readings else 0
     peak = max((r.get("score", 0) for r in readings), default=0)
 
-    openai_key = getattr(_settings, "OPENAI_API_KEY", "")
-    if not openai_key:
+    anthropic_key = getattr(_settings, "ANTHROPIC_API_KEY", "")
+    if not anthropic_key:
         report_html = f"""
 <h3>Podsumowanie tygodnia {week_start} — {week_end}</h3>
 <p>Średnie ryzyko: <b>{avg_score}/100</b>, szczyt: <b>{peak}/100</b></p>
 <p>Odczyty: {len(readings)}, wpisy samopoczucia: {len(wb)}, dolegliwości: {len(symptoms)}</p>
-<p class="muted small">(Klucz OpenAI nie skonfigurowany — raport podstawowy.)</p>
+<p class="muted small">(Klucz Anthropic nie skonfigurowany — raport podstawowy.)</p>
 """
     else:
         try:
-            from openai import OpenAI as _OAI
-            client = _OAI(api_key=openai_key)
+            from anthropic import Anthropic as _ANT
+            client = _ANT(api_key=anthropic_key)
+            model = getattr(_settings, "CLAUDE_MODEL_SMART", "claude-sonnet-4-6")
             data_summary = (
                 f"Odczyty ryzyka (7 dni): {len(readings)} rekordów. "
                 f"Średnie ryzyko: {avg_score}/100. Szczyt: {peak}/100. "
                 f"Wpisy samopoczucia: {len(wb)}. Zgłoszone dolegliwości: {len(symptoms)}. "
                 f"Najgorszy dzień: {max((r.get('dt','?') for r in readings if r.get('score', 0)==peak), default='brak')}."
             )
-            resp = client.chat.completions.create(
-                model=getattr(_settings, "OPENAI_MODEL", "gpt-4o-mini"),
-                messages=[
-                    {"role": "system", "content": "Jesteś asystentem zdrowotnym. Twórz zwięzłe raporty po polsku w formacie HTML (używaj h3, p, ul/li). Maksymalnie 300 słów."},
-                    {"role": "user", "content": f"Wygeneruj tygodniowy raport zdrowotny na podstawie danych: {data_summary}\n\nUwzględnij: średnie ryzyko, najgorszy dzień, korelacje, rekomendacje."},
-                ],
-                max_tokens=600,
-                temperature=0.7,
+            msg = client.messages.create(
+                model=model,
+                max_tokens=2000,
+                system="Jesteś asystentem zdrowotnym. Twórz zwięzłe raporty po polsku w formacie HTML (używaj h3, p, ul/li). Maksymalnie 400 słów.",
+                messages=[{"role": "user", "content": (
+                    f"Wygeneruj tygodniowy raport zdrowotny na podstawie danych: {data_summary}\n\n"
+                    "Uwzględnij sekcje: podsumowanie tygodnia, analiza ryzyka, korelacje, rekomendacje."
+                )}],
             )
-            report_html = resp.choices[0].message.content.strip()
+            report_html = msg.content[0].text.strip()
         except Exception as e:
             report_html = f"<p>Błąd generowania raportu: {e}</p>"
 

@@ -30,7 +30,7 @@ from .wg_sources import (
     list_trend_files, write_wg_user, dashboard_summary, db_stats,
     all_users_latest_scores, users_last_scores, recent_alerts_all, batch_recent_alerts,
     save_push_subscription, delete_push_subscription, process_alerts_queue,
-    forecast_alerts_for_user, generate_daily_tip,
+    forecast_alerts_for_user, generate_daily_tip, get_ai_risk_summary,
 )
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
@@ -126,7 +126,18 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         profiles = list(prof.enabled_alerts) if prof.enabled_alerts else ["migraine", "allergy", "heart"]
         summary = dashboard_summary(settings.WEATHERGUARD_DB, prof.phone_e164, profiles)
         forecast_data = forecast_alerts_for_user(settings.WEATHERGUARD_DB, prof.phone_e164, hours=12)
-        tip = generate_daily_tip(summary.get("scores", {}), summary.get("env", {}), profiles)
+        tip = generate_daily_tip(
+            summary.get("scores", {}), summary.get("env", {}), profiles,
+            db_path=settings.WEATHERGUARD_DB, phone=prof.phone_e164,
+        )
+        for _profile_name, _pdata in summary.get("scores", {}).items():
+            _pdata["ai_summary"] = get_ai_risk_summary(
+                settings.WEATHERGUARD_DB,
+                _profile_name,
+                _pdata.get("score", 0),
+                _pdata.get("reasons", []),
+                _pdata.get("ts", 0),
+            )
 
     try:
         today_wb = DailyWellbeing.objects.get(user=request.user, day=date.today())

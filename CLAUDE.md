@@ -47,8 +47,9 @@ The app is configured via environment variables (or a `.env` file loaded via `py
 | `VAPID_PRIVATE_KEY` | (required for push) | VAPID private key for Web Push |
 | `VAPID_PUBLIC_KEY` | (required for push) | VAPID public key for Web Push |
 | `VAPID_SUBJECT` | `mailto:admin@zdrowa.pracunia.pl` | VAPID contact |
-| `OPENAI_API_KEY` | (optional) | GPT-4o-mini for weekly reports |
-| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model for reports |
+| `ANTHROPIC_API_KEY` | (optional) | Claude for weekly reports, tips, risk summaries, symptom feedback |
+| `CLAUDE_MODEL_FAST` | `claude-haiku-4-5-20251001` | Haiku for tips, summaries, feedback |
+| `CLAUDE_MODEL_SMART` | `claude-sonnet-4-6` | Sonnet for weekly reports |
 | `EMAIL_BACKEND` | `smtp` | Set to `dummy` to disable email sending |
 | `SMTP_HOST` | `email-smtp.eu-central-1.amazonaws.com` | SMTP server host |
 | `SMTP_PORT` | `587` | SMTP server port |

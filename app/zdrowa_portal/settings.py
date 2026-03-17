@@ -131,9 +131,10 @@ VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
 VAPID_PUBLIC_KEY  = env("VAPID_PUBLIC_KEY", "")
 VAPID_SUBJECT     = env("VAPID_SUBJECT", "mailto:admin@zdrowa.pracunia.pl")
 
-# OpenAI for weekly health reports
-OPENAI_API_KEY = env("OPENAI_API_KEY", "")
-OPENAI_MODEL   = env("OPENAI_MODEL", "gpt-4o-mini")
+# Anthropic Claude for AI features
+ANTHROPIC_API_KEY  = env("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL_FAST  = env("CLAUDE_MODEL_FAST",  "claude-haiku-4-5-20251001")
+CLAUDE_MODEL_SMART = env("CLAUDE_MODEL_SMART", "claude-sonnet-4-6")
 
 REGISTRATION_OPEN = True
 
