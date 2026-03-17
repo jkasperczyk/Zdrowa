@@ -79,15 +79,14 @@
             <span class="muted small">próg {{ s.threshold }}</span>
           </div>
 
-          {# Base score / modifier display #}
-          {% if s.base_score != s.score %}
-            <p class="base-score-note">
-              Baza pogodowa: {{ s.base_score }}
-              {% if s.modifier_pct > 0 %}&nbsp;· czynniki osobiste: +{{ s.modifier_pct }}%
-              {% elif s.modifier_pct < 0 %}&nbsp;· czynniki osobiste: {{ s.modifier_pct }}%
-              {% endif %}
-            </p>
-          {% endif %}
+          {# Two-layer score breakdown #}
+          <p class="base-score-note">
+            {% if s.has_personal_data %}
+              baza: {{ s.base_score }}, osobiste: {{ s.modifier_str }}
+            {% else %}
+              <span style="color:var(--text-3)">brak danych osobistych</span>
+            {% endif %}
+          </p>
 
           {% if s.reasons %}
             <ul class="reason-list" style="margin-top:10px;text-align:left">
@@ -274,7 +273,10 @@
     <div class="card">
       <div class="flex-between" style="margin-bottom:16px">
         <h4 style="margin:0">Samopoczucie dziś</h4>
-        <a href="{% url 'wellbeing' %}" class="btn xs secondary">Edytuj</a>
+        <div style="display:flex;gap:8px;align-items:center">
+          <a href="{% url 'wellbeing' %}" class="btn xs secondary">Edytuj</a>
+          <a href="{% url 'symptom_log' %}" class="btn xs" style="background:rgba(239,68,68,.15);color:var(--red);border-color:rgba(239,68,68,.3)">⚠ Zgłoś dolegliwość</a>
+        </div>
       </div>
       {% if today_wb and today_wb.stress_1_10 is not None or today_wb and today_wb.exercise_1_10 is not None or today_wb and today_wb.sleep_quality_1_10 is not None %}
         {% if today_wb.stress_1_10 is not None %}
@@ -334,7 +336,6 @@
         <a href="{% url 'alerts' %}" class="btn secondary">Alerty SMS</a>
         <a href="{% url 'data' %}" class="btn secondary">Surowe dane</a>
         <a href="{% url 'trends' %}" class="btn secondary">Trendy (wykresy)</a>
-        <a href="{% url 'symptom_log' %}" class="btn secondary">Zgłoś dolegliwość</a>
         <a href="{% url 'settings' %}" class="btn secondary">Ustawienia</a>
       </div>
     </div>

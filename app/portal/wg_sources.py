@@ -365,10 +365,18 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
             else:
                 tier = "green"
 
-            # Modifier percentage display
+            # Modifier percentage display and string
             modifier_pct = 0
-            if base_score_val > 0 and score != base_score_val:
-                modifier_pct = round((score / base_score_val - 1) * 100)
+            modifier_float = 1.0
+            if base_score_val > 0:
+                modifier_float = score / base_score_val
+                if score != base_score_val:
+                    modifier_pct = round((modifier_float - 1) * 100)
+            modifier_str = f"×{modifier_float:.2f}"
+
+            # Detect if personal (wellbeing) data was present in the last reading
+            _wb_keys = ("stress_1_10", "exercise_1_10", "sleep_quality_1_10", "hydration_1_10", "headache_1_10")
+            has_personal_data = any(feats.get(k) is not None for k in _wb_keys)
 
             # Trend: compare current base_score to 24h average base_score
             trend = "stable"
@@ -393,6 +401,8 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
                 "score": score,
                 "base_score": base_score_val,
                 "modifier_pct": modifier_pct,
+                "modifier_str": modifier_str,
+                "has_personal_data": has_personal_data,
                 "threshold": th,
                 "label": d.get("label") or "",
                 "dt": _utc_dt(ts) if ts else None,

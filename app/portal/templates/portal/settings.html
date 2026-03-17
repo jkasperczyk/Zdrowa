@@ -84,7 +84,7 @@
     </div>
 
     {# ── Cykl miesięczny (opcjonalne) ── #}
-    <div class="card" style="margin-bottom:16px">
+    <div class="card" id="cycle-section" style="margin-bottom:16px">
       <p class="section-title" style="margin-top:0">Cykl miesięczny <span class="pill">opcjonalne · tylko dla kobiet</span></p>
       <div class="form-row" style="margin-bottom:0">
         <div class="field" style="margin-bottom:0">
@@ -106,4 +106,17 @@
     </div>
   </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+  var genderSel = document.getElementById('id_gender');
+  var cycleSection = document.getElementById('cycle-section');
+  function toggleCycle() {
+    cycleSection.style.display = genderSel.value === 'female' ? '' : 'none';
+  }
+  toggleCycle();
+  genderSel.addEventListener('change', toggleCycle);
+})();
+</script>
 {% endblock %}

@@ -275,7 +275,18 @@ def vocative(name: str, gender: str) -> str:
         return title  # unknown → nominative
 
     else:
-        return title  # unspecified gender → nominative
+        # Unspecified gender: try both lookup tables first, then basic rules
+        v = _MALE_VOC.get(title) or _FEMALE_VOC.get(title)
+        if v:
+            return v
+        low = title.lower()
+        if low.endswith("ek"):          # Jacek→Jacku, Marek→Marku, Tomek→Tomku
+            return title[:-2] + "ku"
+        if low.endswith("ia"):          # Kasia→Kasiu, Marysia→Marysiu
+            return title[:-1] + "u"
+        if low.endswith("a"):           # Anna→Anno, Magda→Magdo, Kuba→Kubo
+            return title[:-1] + "o"
+        return title  # unknown → nominative
 
 
 def greeting(first_name: str, gender: str) -> str | None:

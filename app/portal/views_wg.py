@@ -56,13 +56,33 @@ def data_view(request: HttpRequest) -> HttpResponse:
 
     rows = readings_last_days(settings.WEATHERGUARD_DB, prof.phone_e164, selected_profile, days=7, limit=1500)
 
-    # Also include base_score if available
     kset = set()
     for r in rows:
         kset.update(r.keys())
 
-    # Wellbeing history for this period
-    wb_rows = wellbeing_history(settings.WEATHERGUARD_DB, prof.phone_e164, days=7)
+    # Build wellbeing-by-date lookup for inline join
+    wb_list = wellbeing_history(settings.WEATHERGUARD_DB, prof.phone_e164, days=7)
+    wb_by_date: Dict[str, Dict] = {w["day"]: w for w in wb_list}
+
+    # Enrich each reading row with wellbeing data for that day + modifier value
+    from datetime import timezone as _tz
+    from datetime import datetime as _dt
+    for r in rows:
+        ts = r.get("ts")
+        day = _dt.fromtimestamp(int(ts), tz=_tz.utc).strftime("%Y-%m-%d") if ts else None
+        wb = wb_by_date.get(day, {}) if day else {}
+        r["wb_stress"]    = wb.get("stress_1_10")
+        r["wb_exercise"]  = wb.get("exercise_1_10")
+        r["wb_sleep"]     = wb.get("sleep_quality_1_10")
+        r["wb_hydration"] = wb.get("hydration_1_10")
+        r["wb_headache"]  = wb.get("headache_1_10")
+        # Compute modifier string
+        score = r.get("score")
+        base = r.get("base_score")
+        if base is not None and score is not None and base > 0:
+            r["modifier_str"] = f"×{score/base:.2f}"
+        else:
+            r["modifier_str"] = None
 
     return render(request, "portal/data.html", {
         "prof": prof,
@@ -74,7 +94,6 @@ def data_view(request: HttpRequest) -> HttpResponse:
         "has_threshold": "threshold" in kset,
         "has_details": "details" in kset,
         "has_base_score": "base_score" in kset,
-        "wb_rows": wb_rows,
     })
 
 @login_required

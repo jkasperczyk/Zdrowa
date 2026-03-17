@@ -99,8 +99,9 @@
 
     </div>
 
-    <div class="actions mt-2">
+    <div class="actions mt-2" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <button type="submit" class="btn">Zapisz samopoczucie</button>
+      <a href="{% url 'symptom_log' %}" class="btn" style="background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)">⚠ Zgłoś dolegliwość</a>
     </div>
   </form>
 
