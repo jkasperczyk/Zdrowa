@@ -50,9 +50,9 @@
     <form method="post">
       {% csrf_token %}
       <div class="field">
-        <label for="id_username">E-mail</label>
-        <input id="id_username" name="username" type="email" autocomplete="username"
-               required autofocus placeholder="twoj@email.pl">
+        <label for="id_username">Login</label>
+        <input id="id_username" name="username" type="text" autocomplete="username"
+               required autofocus placeholder="E-mail, telefon lub nazwa użytkownika">
       </div>
       <div class="field" style="margin-bottom:20px">
         <label for="id_password">Hasło</label>

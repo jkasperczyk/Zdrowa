@@ -109,12 +109,12 @@ WEATHERGUARD_TRENDS_DIR = env("WG_TRENDS_DIR", "/opt/weatherguard/public_media/t
 
 FIELD_ENCRYPTION_KEY = env("ZDROWA_FIELD_ENCRYPTION_KEY", "")
 
-# Email (optional, default: dummy backend -> does nothing)
-_email_backend = env("EMAIL_BACKEND", "dummy").lower().strip()
-if _email_backend == "smtp":
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-else:
+# Email — defaults to SMTP; set EMAIL_BACKEND=dummy in .env to disable
+_email_backend = env("EMAIL_BACKEND", "smtp").lower().strip()
+if _email_backend == "dummy":
     EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 
 EMAIL_HOST          = os.environ.get("SMTP_HOST")  or env("EMAIL_HOST",          "email-smtp.eu-central-1.amazonaws.com")
 EMAIL_PORT          = int(os.environ.get("SMTP_PORT") or env("EMAIL_PORT", "587"))

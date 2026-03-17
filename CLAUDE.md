@@ -49,7 +49,7 @@ The app is configured via environment variables (or a `.env` file loaded via `py
 | `VAPID_SUBJECT` | `mailto:admin@zdrowa.pracunia.pl` | VAPID contact |
 | `OPENAI_API_KEY` | (optional) | GPT-4o-mini for weekly reports |
 | `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model for reports |
-| `EMAIL_BACKEND` | `dummy` | Set to `smtp` to enable email sending |
+| `EMAIL_BACKEND` | `smtp` | Set to `dummy` to disable email sending |
 | `SMTP_HOST` | `email-smtp.eu-central-1.amazonaws.com` | SMTP server host |
 | `SMTP_PORT` | `587` | SMTP server port |
 | `SMTP_USER` | — | SMTP username |
