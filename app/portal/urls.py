@@ -1,4 +1,5 @@
-from django.urls import path
+from django.contrib.auth import views as auth_views
+from django.urls import path, reverse_lazy
 from . import views
 from . import views_wg
 
@@ -23,6 +24,25 @@ urlpatterns = [
 
     path("password/change/", views.password_change_view, name="password_change"),
 
+    # Password reset (Django built-in views, custom templates)
+    path("password/reset/", auth_views.PasswordResetView.as_view(
+        template_name="portal/password_reset.html",
+        email_template_name="portal/email/password_reset.txt",
+        html_email_template_name="portal/email/password_reset.html",
+        subject_template_name="portal/email/password_reset_subject.txt",
+        success_url=reverse_lazy("password_reset_done"),
+    ), name="password_reset"),
+    path("password/reset/done/", auth_views.PasswordResetDoneView.as_view(
+        template_name="portal/password_reset_done.html",
+    ), name="password_reset_done"),
+    path("password/reset/confirm/<uidb64>/<token>/", auth_views.PasswordResetConfirmView.as_view(
+        template_name="portal/password_reset_confirm.html",
+        success_url=reverse_lazy("password_reset_complete"),
+    ), name="password_reset_confirm"),
+    path("password/reset/complete/", auth_views.PasswordResetCompleteView.as_view(
+        template_name="portal/password_reset_complete.html",
+    ), name="password_reset_complete"),
+
     path("admin-tools/", views.admin_tools, name="admin_tools"),
     path("admin-tools/user/<int:user_id>/", views.admin_user_edit, name="admin_user_edit"),
     path("admin-tools/system/", views.admin_system, name="admin_system"),
@@ -30,5 +50,8 @@ urlpatterns = [
     path("account/export/", views.account_export_view, name="account_export"),
     path("account/delete/", views.account_delete_view, name="account_delete"),
     path("account/deleted/", views.account_deleted_view, name="account_deleted"),
+
     path("register/", views.register_view, name="register"),
+    path("verify-email/<uidb64>/<token>/", views.verify_email_view, name="verify_email"),
+    path("verify-email/resend/", views.resend_verification_view, name="resend_verification"),
 ]

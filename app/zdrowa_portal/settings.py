@@ -116,12 +116,12 @@ if _email_backend == "smtp":
 else:
     EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
 
-EMAIL_HOST = env("EMAIL_HOST", "")
-EMAIL_PORT = int(env("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = env("EMAIL_USE_TLS", "1") == "1"
-EMAIL_HOST_USER = env("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "no-reply@zdrowa.pracunia.pl")
+EMAIL_HOST          = os.environ.get("SMTP_HOST")  or env("EMAIL_HOST",          "email-smtp.eu-central-1.amazonaws.com")
+EMAIL_PORT          = int(os.environ.get("SMTP_PORT") or env("EMAIL_PORT", "587"))
+EMAIL_USE_TLS       = True
+EMAIL_HOST_USER     = os.environ.get("SMTP_USER")  or env("EMAIL_HOST_USER",     "AKIA3HV232OII3IOPIDU")
+EMAIL_HOST_PASSWORD = os.environ.get("SMTP_PASS")  or env("EMAIL_HOST_PASSWORD", "BIhGLVF0DvSLBOIhvFDqzyLMAT9c/ZN8EBHHCwjRolYz")
+DEFAULT_FROM_EMAIL  = os.environ.get("MAIL_FROM")  or env("DEFAULT_FROM_EMAIL",  "Health Guard <no-reply@pracunia.pl>")
 
 WEATHERGUARD_LOG = env("WG_LOG_FILE", "/opt/weatherguard/logs/weatherguard.log")
 WEATHERGUARD_BASE_DIR = env("WG_BASE_DIR", "/opt/weatherguard")
@@ -135,4 +135,9 @@ VAPID_SUBJECT     = env("VAPID_SUBJECT", "mailto:admin@zdrowa.pracunia.pl")
 OPENAI_API_KEY = env("OPENAI_API_KEY", "")
 OPENAI_MODEL   = env("OPENAI_MODEL", "gpt-4o-mini")
 
-REGISTRATION_OPEN = False
+REGISTRATION_OPEN = True
+
+ADMIN_NOTIFY_EMAIL = env("ADMIN_NOTIFY_EMAIL", "jacek.kasperczyk@gmail.com")
+
+# Email verification / password reset token lifetime (24 hours)
+PASSWORD_RESET_TIMEOUT = 86400

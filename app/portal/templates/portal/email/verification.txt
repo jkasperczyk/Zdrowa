@@ -1,0 +1,14 @@
+Cześć, {{ first_name }}!
+
+Dziękujemy za rejestrację w Health Guard — Twoim osobistym asystencie zdrowia.
+
+Kliknij poniższy link, aby aktywować swoje konto:
+
+{{ verify_url }}
+
+Link jest ważny przez 24 godziny.
+
+Jeśli to nie Ty zakładałeś/aś konto, zignoruj tę wiadomość — nic się nie stanie.
+
+---
+Health Guard — https://zdrowa.pracunia.pl

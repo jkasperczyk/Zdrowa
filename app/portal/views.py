@@ -11,10 +11,15 @@ from django.contrib.auth import authenticate, login, logout, update_session_auth
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.forms import PasswordChangeForm
 from django.contrib.auth.models import User
+from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, FileResponse, Http404
 from django.shortcuts import render, redirect, get_object_or_404
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 
 from datetime import date
 
@@ -268,6 +273,78 @@ def _is_staff(u) -> bool:
 def _email_enabled() -> bool:
     backend = getattr(settings, "EMAIL_BACKEND", "") or ""
     return "smtp" in backend.lower()
+
+
+def _send_verification_email(request: HttpRequest, user) -> None:
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    verify_url = request.build_absolute_uri(
+        reverse("verify_email", kwargs={"uidb64": uid, "token": token})
+    )
+    ctx = {"first_name": user.first_name or user.email, "verify_url": verify_url}
+    subject = "Potwierdź swoje konto w Health Guard"
+    text_body = render_to_string("portal/email/verification.txt", ctx)
+    html_body = render_to_string("portal/email/verification.html", ctx)
+    try:
+        send_mail(
+            subject=subject,
+            message=text_body,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "Health Guard <no-reply@pracunia.pl>"),
+            recipient_list=[user.email],
+            html_message=html_body,
+            fail_silently=True,
+        )
+    except Exception:
+        pass
+
+
+def _notify_admin_user_verified(user, prof) -> None:
+    admin_email = getattr(settings, "ADMIN_NOTIFY_EMAIL", "")
+    if not admin_email or not _email_enabled():
+        return
+    from datetime import datetime as _dt
+    body = (
+        f"Nowy użytkownik aktywował konto w Health Guard.\n\n"
+        f"Imię i nazwisko: {user.first_name} {user.last_name}\n"
+        f"E-mail: {user.email}\n"
+        f"Telefon: {prof.phone_e164}\n"
+        f"Lokalizacja: {prof.location}\n"
+        f"Data rejestracji: {_dt.now().strftime('%Y-%m-%d %H:%M')}\n"
+    )
+    try:
+        send_mail(
+            subject=f"Nowy użytkownik Health Guard: {user.first_name} {user.last_name}",
+            message=body,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "Health Guard <no-reply@pracunia.pl>"),
+            recipient_list=[admin_email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass
+
+
+def _notify_admin_deletion(phone: str, user_email: str = "") -> None:
+    admin_email = getattr(settings, "ADMIN_NOTIFY_EMAIL", "")
+    if not admin_email or not _email_enabled():
+        return
+    from datetime import datetime as _dt
+    body = (
+        f"Użytkownik usunął swoje konto z Health Guard.\n\n"
+        f"Telefon: {phone}\n"
+        f"E-mail: {user_email}\n"
+        f"Data usunięcia: {_dt.now().strftime('%Y-%m-%d %H:%M')}\n"
+    )
+    try:
+        send_mail(
+            subject=f"Użytkownik usunął konto: {phone}",
+            message=body,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "Health Guard <no-reply@pracunia.pl>"),
+            recipient_list=[admin_email],
+            fail_silently=True,
+        )
+    except Exception:
+        pass
+
 
 @user_passes_test(_is_staff)
 def admin_tools(request: HttpRequest) -> HttpResponse:
@@ -929,11 +1006,13 @@ def account_delete_view(request: HttpRequest) -> HttpResponse:
         return redirect("settings")
     prof = _get_profile(request.user)
     phone = prof.phone_e164
+    user_email = request.user.email
     from .wg_sources import delete_all_user_data
     try:
         delete_all_user_data(settings.WEATHERGUARD_DB, phone)
     except Exception:
         pass
+    _notify_admin_deletion(phone, user_email)
     request.user.delete()
     logout(request)
     return redirect("account_deleted")
@@ -947,5 +1026,102 @@ def register_view(request: HttpRequest) -> HttpResponse:
     registration_open = getattr(settings, "REGISTRATION_OPEN", False)
     if not registration_open:
         return render(request, "portal/register.html", {"registration_open": False})
-    # Future: implement full registration form
-    return render(request, "portal/register.html", {"registration_open": True})
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+
+    errors: list = []
+    form_data: dict = {}
+
+    if request.method == "POST":
+        form_data = request.POST
+        first_name = request.POST.get("first_name", "").strip()
+        last_name  = request.POST.get("last_name",  "").strip()
+        email      = request.POST.get("email",      "").strip().lower()
+        phone      = request.POST.get("phone_e164", "").strip()
+        gender     = request.POST.get("gender",     "unspecified").strip()
+        password   = request.POST.get("password",   "")
+        password2  = request.POST.get("password2",  "")
+        location   = request.POST.get("location",   "").strip()
+
+        if not all([first_name, last_name, email, phone, password, location]):
+            errors.append("Wypełnij wszystkie wymagane pola.")
+        if password and password2 and password != password2:
+            errors.append("Hasła nie są identyczne.")
+        if password and len(password) < 8:
+            errors.append("Hasło musi mieć co najmniej 8 znaków.")
+        if password and not any(c.isdigit() for c in password):
+            errors.append("Hasło musi zawierać co najmniej jedną cyfrę.")
+        if email and User.objects.filter(username=email).exists():
+            errors.append("Konto z tym adresem e-mail już istnieje.")
+        if phone and UserProfile.objects.filter(phone_e164=phone).exists():
+            errors.append("Konto z tym numerem telefonu już istnieje.")
+
+        if not errors:
+            user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name,
+                is_active=False,
+            )
+            prof = UserProfile(user=user)
+            prof.phone_e164 = phone
+            prof.gender = gender
+            prof.location = location
+            prof.enabled_alerts = ["migraine", "allergy", "heart"]
+            prof.default_profile = "migraine"
+            prof.save()
+            _send_verification_email(request, user)
+            return render(request, "portal/register_pending.html", {"email": email})
+
+    return render(request, "portal/register.html", {
+        "registration_open": True,
+        "errors": errors,
+        "form_data": form_data,
+    })
+
+
+def verify_email_view(request: HttpRequest, uidb64: str, token: str) -> HttpResponse:
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and default_token_generator.check_token(user, token):
+        if not user.is_active:
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+            prof = _get_profile(user)
+            if prof.phone_e164:
+                try:
+                    write_wg_user(
+                        settings.WEATHERGUARD_DB,
+                        phone=prof.phone_e164,
+                        profiles=prof.enabled_alerts or ["migraine"],
+                        location=prof.location,
+                        threshold=prof.alert_threshold,
+                        quiet_hours=prof.quiet_hours or None,
+                        enabled=True,
+                    )
+                except Exception:
+                    pass
+            _notify_admin_user_verified(user, prof)
+        messages.success(request, "Konto aktywowane! Możesz się zalogować.")
+        return redirect("login")
+    return render(request, "portal/verify_email_invalid.html", {"uidb64": uidb64})
+
+
+def resend_verification_view(request: HttpRequest) -> HttpResponse:
+    sent = False
+    error = None
+    if request.method == "POST":
+        email = request.POST.get("email", "").strip().lower()
+        try:
+            user = User.objects.get(username=email, is_active=False)
+            _send_verification_email(request, user)
+            sent = True
+        except User.DoesNotExist:
+            error = "Nie znaleziono konta oczekującego na weryfikację dla tego adresu e-mail."
+    return render(request, "portal/resend_verification.html", {"sent": sent, "error": error})

@@ -1,0 +1,21 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div style="min-height:calc(100vh - 56px);display:flex;align-items:center;justify-content:center;padding:32px 20px">
+  <div class="card" style="max-width:460px;width:100%;text-align:center;padding:40px 32px">
+    <p style="font-size:3rem;margin:0 0 16px">📬</p>
+    <h1 style="font-size:1.3rem;font-weight:800;margin:0 0 14px">Sprawdź skrzynkę e-mail</h1>
+    <p style="color:var(--text-2);line-height:1.75;margin:0 0 10px">
+      Wysłaliśmy link aktywacyjny na adres:
+    </p>
+    <p style="font-weight:700;color:var(--accent-h);margin:0 0 20px;word-break:break-all">{{ email }}</p>
+    <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin:0 0 28px">
+      Link jest ważny <strong>24 godziny</strong>. Sprawdź też folder spam, jeśli wiadomość nie dotarła.
+    </p>
+    <hr style="border:none;border-top:1px solid var(--border);margin:0 0 20px">
+    <p class="muted small" style="margin:0">
+      Nie dotarł e-mail?
+      <a href="{% url 'resend_verification' %}" style="color:var(--accent-h)">Wyślij ponownie</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div style="min-height:calc(100vh - 56px);display:flex;align-items:center;justify-content:center;padding:32px 20px">
+  <div class="card" style="max-width:440px;width:100%;padding:40px 32px">
+    <h1 style="font-size:1.2rem;font-weight:800;margin:0 0 16px">Wyślij nowy link aktywacyjny</h1>
+
+    {% if sent %}
+      <div style="text-align:center;padding:8px 0">
+        <p style="font-size:2rem;margin:0 0 12px">📬</p>
+        <p style="color:var(--text-2);line-height:1.75;margin:0 0 20px">
+          Jeśli podany adres e-mail ma konto oczekujące na aktywację, wysłaliśmy nowy link.<br>
+          Sprawdź skrzynkę (i folder spam).
+        </p>
+        <a href="{% url 'login' %}" class="btn secondary sm">Przejdź do logowania</a>
+      </div>
+    {% else %}
+      {% if error %}
+        <div style="background:rgba(220,38,38,.1);border:1px solid rgba(220,38,38,.3);border-radius:8px;padding:12px 14px;margin-bottom:16px">
+          <p style="color:var(--red);font-size:.875rem;margin:0">{{ error }}</p>
+        </div>
+      {% endif %}
+      <p class="muted small" style="margin-bottom:20px">
+        Podaj adres e-mail, na który zarejestrowałeś/aś konto.
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <div class="field">
+          <label for="id_email">E-mail</label>
+          <input id="id_email" name="email" type="email" required
+                 placeholder="twoj@email.pl" autocomplete="email" autofocus>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn">Wyślij link</button>
+          <a href="{% url 'login' %}" class="btn secondary">Anuluj</a>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
