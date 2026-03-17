@@ -1138,56 +1138,8 @@ def save_weekly_report(db_path: str, phone: str, week_start: str, week_end: str,
 
 # ── Contextual daily tips ──────────────────────────────────────────────────────
 
-def generate_daily_tip(
-    scores: Dict[str, Any],
-    env_data: Dict[str, Any],
-    profiles: List[str],
-    db_path: str = "",
-    phone: str = "",
-) -> Optional[str]:
-    """Generate a short contextual tip. Tries AI (Haiku, 1h cache) first, falls back to rule-based."""
-
-    # --- AI path ---
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if api_key and db_path:
-        hour_key = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H")
-        cache_key = f"tip:{phone or 'anon'}:{hour_key}"
-        cached = _get_ai_cache(db_path, cache_key)
-        if cached:
-            return cached
-        try:
-            from anthropic import Anthropic
-            model = os.getenv("CLAUDE_MODEL_FAST", "claude-haiku-4-5-20251001")
-            pressure_delta = env_data.get("pressure_delta_6h")
-            aqi = env_data.get("aqi_us_max_6h") or 0
-            pollen = env_data.get("google_pollen_max") or env_data.get("pollen_max_6h") or 0
-            gp_type = env_data.get("google_pollen_type") or "pyłki"
-            max_score = max(
-                (scores.get(p, {}).get("score", 0) for p in profiles if scores.get(p)),
-                default=0,
-            )
-            prompt = (
-                f"Wygeneruj 1-2 krótkie, konkretne, praktyczne porady zdrowotne po polsku "
-                f"dla użytkownika monitorującego profile: {', '.join(profiles)}. "
-                f"Aktualne dane: zmiana ciśnienia={pressure_delta} hPa/6h, AQI={aqi}, "
-                f"pyłki={pollen} ({gp_type}), najwyższy wynik ryzyka={max_score}/100. "
-                f"Odpowiedź: tylko porady, bez wstępu i nagłówka, maksymalnie 2 zdania."
-            )
-            client = Anthropic(api_key=api_key)
-            msg = client.messages.create(
-                model=model,
-                max_tokens=150,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            tip = (msg.content[0].text or "").strip()
-            if tip:
-                _set_ai_cache(db_path, cache_key, tip, model, 3600)
-                return tip
-        except Exception:
-            pass
-
-    # --- Rule-based fallback ---
-    tips = []
+def _rule_based_tip(scores: Dict[str, Any], env_data: Dict[str, Any], profiles: List[str]) -> Optional[str]:
+    """Return a single rule-based tip (instant, no network calls)."""
     has_allergy = "allergy" in profiles
     has_migraine = "migraine" in profiles
     has_heart = "heart" in profiles
@@ -1210,6 +1162,7 @@ def generate_daily_tip(
     except Exception:
         pressure_delta = None
 
+    tips = []
     if has_allergy and pollen >= 40:
         gp_type = env_data.get("google_pollen_type") or "pyłków"
         tips.append(f"Wysokie stężenie {gp_type.lower()} — rozważ lek antyhistaminowy przed wyjściem.")
@@ -1226,6 +1179,47 @@ def generate_daily_tip(
             tips.append("Warunki sprzyjające — dobry dzień na aktywność na świeżym powietrzu!")
 
     return tips[0] if tips else None
+
+
+def generate_daily_tip(
+    scores: Dict[str, Any],
+    env_data: Dict[str, Any],
+    profiles: List[str],
+    db_path: str = "",
+    phone: str = "",
+) -> Optional[str]:
+    """Return a pre-generated tip from daily_tips table (instant SQLite read + random choice).
+
+    Tips are pre-generated daily at 06:00 by the generate_daily_tips management command.
+    If no pre-generated tips exist for today, falls back to rule-based tips immediately.
+    No AI API calls are made here.
+    """
+    import random as _random
+
+    if db_path and phone:
+        today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        try:
+            c = sqlite3.connect(db_path)
+            try:
+                row = c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='daily_tips'"
+                ).fetchone()
+                if row:
+                    row = c.execute(
+                        "SELECT tips_json FROM daily_tips WHERE phone=? AND day=?",
+                        (phone, today),
+                    ).fetchone()
+                    if row:
+                        tips = json.loads(row[0] or "[]")
+                        if tips:
+                            return _random.choice(tips)
+            finally:
+                c.close()
+        except Exception:
+            pass
+
+    # No pre-generated tips — instant rule-based fallback, zero network calls
+    return _rule_based_tip(scores, env_data, profiles)
 
 
 def get_ai_risk_summary(
