@@ -1,9 +1,14 @@
 {% extends "portal/base.html" %}
 {% block content %}
 <div class="stack">
-  <div>
-    <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Dane</h1>
-    <p class="muted small">Odczyty WeatherGuard — ostatnie 7 dni, niezależnie od progów alertów.</p>
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Dane</h1>
+      <p class="muted small">Odczyty WeatherGuard i dane samopoczucia — ostatnie 7 dni.</p>
+    </div>
+    {% if prof.phone_e164 %}
+      <a href="{% url 'csv_export' %}?profile={{ selected_profile }}" class="btn sm secondary" style="white-space:nowrap">Eksport CSV</a>
+    {% endif %}
   </div>
 
   {% if not prof.phone_e164 %}
@@ -31,38 +36,85 @@
       </p>
     </div>
 
-    <div class="card">
-      {% if rows %}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Czas (UTC)</th>
-                <th>Score</th>
-                {% if has_value %}<th>Value</th>{% endif %}
-                {% if has_risk %}<th>Risk</th>{% endif %}
-                {% if has_threshold %}<th>Próg</th>{% endif %}
-                {% if has_details %}<th>Details</th>{% endif %}
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in rows %}
+    {# ── Environmental readings ── #}
+    <div>
+      <p class="section-title">Odczyty środowiskowe</p>
+      <div class="card">
+        {% if rows %}
+          <div class="table-wrap">
+            <table>
+              <thead>
                 <tr>
-                  <td class="mono small">{{ r.dt }}</td>
-                  <td><b>{{ r.score }}</b></td>
-                  {% if has_value %}<td>{{ r.value }}</td>{% endif %}
-                  {% if has_risk %}<td>{{ r.risk }}</td>{% endif %}
-                  {% if has_threshold %}<td class="muted">{{ r.threshold }}</td>{% endif %}
-                  {% if has_details %}<td class="small muted">{{ r.details }}</td>{% endif %}
+                  <th>Czas (UTC)</th>
+                  <th>Score</th>
+                  {% if has_base_score %}<th>Baza</th>{% endif %}
+                  {% if has_value %}<th>Value</th>{% endif %}
+                  {% if has_risk %}<th>Risk</th>{% endif %}
+                  {% if has_threshold %}<th>Próg</th>{% endif %}
+                  {% if has_details %}<th>Details</th>{% endif %}
                 </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="muted">Brak odczytów w ostatnich 7 dniach dla tego profilu.</p>
-      {% endif %}
+              </thead>
+              <tbody>
+                {% for r in rows %}
+                  <tr>
+                    <td class="mono small">{{ r.dt }}</td>
+                    <td><b>{{ r.score }}</b></td>
+                    {% if has_base_score %}<td class="muted">{{ r.base_score|default:"—" }}</td>{% endif %}
+                    {% if has_value %}<td>{{ r.value }}</td>{% endif %}
+                    {% if has_risk %}<td>{{ r.risk }}</td>{% endif %}
+                    {% if has_threshold %}<td class="muted">{{ r.threshold }}</td>{% endif %}
+                    {% if has_details %}<td class="small muted">{{ r.details }}</td>{% endif %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">Brak odczytów w ostatnich 7 dniach dla tego profilu.</p>
+        {% endif %}
+      </div>
     </div>
+
+    {# ── Wellbeing data ── #}
+    <div>
+      <p class="section-title">Dane samopoczucia</p>
+      <div class="card">
+        {% if wb_rows %}
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dzień</th>
+                  <th>Stres</th>
+                  <th>Aktywność</th>
+                  <th>Sen</th>
+                  <th>Nawodnienie</th>
+                  <th>Ból głowy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for w in wb_rows %}
+                  <tr>
+                    <td class="mono small">{{ w.day }}</td>
+                    <td>{% if w.stress_1_10 is not None %}{{ w.stress_1_10 }}/10{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>{% if w.exercise_1_10 is not None %}{{ w.exercise_1_10 }}/10{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>{% if w.sleep_quality_1_10 is not None %}{{ w.sleep_quality_1_10 }}/10{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>{% if w.hydration_1_10 is not None %}{{ w.hydration_1_10 }}/10{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>{% if w.headache_1_10 is not None %}{{ w.headache_1_10 }}/10{% else %}<span class="muted">—</span>{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="muted">Brak danych samopoczucia w ostatnich 7 dniach.</p>
+        {% endif %}
+        <div style="margin-top:10px">
+          <a href="{% url 'wellbeing' %}" class="btn xs secondary">Uzupełnij samopoczucie</a>
+        </div>
+      </div>
+    </div>
+
   {% endif %}
 </div>
 {% endblock %}

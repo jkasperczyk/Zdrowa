@@ -1,4 +1,16 @@
 {% extends "portal/base.html" %}
+{% block extra_css %}
+.trend-badge { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:.85rem;font-weight:700;margin-left:6px;vertical-align:middle; }
+.trend-up   { background:rgba(239,68,68,.18);color:var(--red); }
+.trend-down { background:rgba(34,197,94,.18);color:var(--green); }
+.trend-stable { background:rgba(148,163,184,.15);color:var(--text-3); }
+.base-score-note { font-size:.75rem;color:var(--text-3);margin-top:4px; }
+/* Onboarding modal */
+.onboarding-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px; }
+.onboarding-modal   { background:var(--card-bg);border:1px solid var(--border);border-radius:16px;max-width:420px;width:100%;padding:28px;box-shadow:0 8px 48px rgba(0,0,0,.5); }
+.onboarding-modal h2 { margin:0 0 12px;font-size:1.3rem; }
+.onboarding-modal p  { color:var(--text-2);line-height:1.6;margin-bottom:16px; }
+{% endblock %}
 {% block content %}
 <div class="stack">
 
@@ -50,10 +62,32 @@
             </div>
           </div>
 
+          {# Trend badge #}
+          <div style="text-align:center;margin:-4px 0 6px">
+            {% if s.trend == "up" %}
+              <span class="trend-badge trend-up" title="Wzrost wzgledem ostatnich 24h">↑</span>
+            {% elif s.trend == "down" %}
+              <span class="trend-badge trend-down" title="Spadek wzgledem ostatnich 24h">↓</span>
+            {% else %}
+              <span class="trend-badge trend-stable" title="Stabilne">→</span>
+            {% endif %}
+            <span class="muted" style="font-size:.72rem">vs 24h</span>
+          </div>
+
           <div class="flex-between" style="gap:6px;flex-wrap:wrap;text-align:left">
             <span class="badge {{ s.tier }}">{{ s.label|default:"—" }}</span>
             <span class="muted small">próg {{ s.threshold }}</span>
           </div>
+
+          {# Base score / modifier display #}
+          {% if s.base_score != s.score %}
+            <p class="base-score-note">
+              Baza pogodowa: {{ s.base_score }}
+              {% if s.modifier_pct > 0 %}&nbsp;· czynniki osobiste: +{{ s.modifier_pct }}%
+              {% elif s.modifier_pct < 0 %}&nbsp;· czynniki osobiste: {{ s.modifier_pct }}%
+              {% endif %}
+            </p>
+          {% endif %}
 
           {% if s.reasons %}
             <ul class="reason-list" style="margin-top:10px;text-align:left">
@@ -242,7 +276,8 @@
         <h4 style="margin:0">Samopoczucie dziś</h4>
         <a href="{% url 'wellbeing' %}" class="btn xs secondary">Edytuj</a>
       </div>
-      {% if today_wb and today_wb.stress_1_10 is not None or today_wb and today_wb.exercise_1_10 is not None %}
+      {% if today_wb and today_wb.stress_1_10 is not None or today_wb and today_wb.exercise_1_10 is not None or today_wb and today_wb.sleep_quality_1_10 is not None %}
+        {% if today_wb.stress_1_10 is not None %}
         <div class="wb-row">
           <span class="wb-label">Stres</span>
           <div class="wb-track">
@@ -250,6 +285,8 @@
           </div>
           <span class="wb-score" style="color:{% if today_wb.stress_1_10 >= 8 %}var(--red){% elif today_wb.stress_1_10 >= 6 %}var(--amber){% else %}var(--accent-h){% endif %}">{{ today_wb.stress_1_10 }}/10</span>
         </div>
+        {% endif %}
+        {% if today_wb.exercise_1_10 is not None %}
         <div class="wb-row">
           <span class="wb-label">Aktywność</span>
           <div class="wb-track">
@@ -257,6 +294,34 @@
           </div>
           <span class="wb-score" style="color:{% if today_wb.exercise_1_10 >= 7 %}var(--green){% else %}var(--accent-h){% endif %}">{{ today_wb.exercise_1_10 }}/10</span>
         </div>
+        {% endif %}
+        {% if today_wb.sleep_quality_1_10 is not None %}
+        <div class="wb-row">
+          <span class="wb-label">Sen</span>
+          <div class="wb-track">
+            <div class="wb-fill" style="width:{% widthratio today_wb.sleep_quality_1_10 10 100 %}%;background:{% if today_wb.sleep_quality_1_10 >= 7 %}var(--green){% elif today_wb.sleep_quality_1_10 <= 3 %}var(--red){% else %}var(--accent){% endif %}"></div>
+          </div>
+          <span class="wb-score">{{ today_wb.sleep_quality_1_10 }}/10</span>
+        </div>
+        {% endif %}
+        {% if today_wb.hydration_1_10 is not None %}
+        <div class="wb-row">
+          <span class="wb-label">Nawodnienie</span>
+          <div class="wb-track">
+            <div class="wb-fill" style="width:{% widthratio today_wb.hydration_1_10 10 100 %}%;background:{% if today_wb.hydration_1_10 >= 7 %}var(--green){% elif today_wb.hydration_1_10 <= 3 %}var(--red){% else %}var(--accent){% endif %}"></div>
+          </div>
+          <span class="wb-score">{{ today_wb.hydration_1_10 }}/10</span>
+        </div>
+        {% endif %}
+        {% if today_wb.headache_1_10 is not None %}
+        <div class="wb-row">
+          <span class="wb-label">Ból głowy</span>
+          <div class="wb-track">
+            <div class="wb-fill" style="width:{% widthratio today_wb.headache_1_10 10 100 %}%;background:{% if today_wb.headache_1_10 >= 7 %}var(--red){% elif today_wb.headache_1_10 >= 4 %}var(--amber){% else %}var(--accent){% endif %}"></div>
+          </div>
+          <span class="wb-score" style="color:{% if today_wb.headache_1_10 >= 7 %}var(--red){% elif today_wb.headache_1_10 >= 4 %}var(--amber){% else %}var(--accent-h){% endif %}">{{ today_wb.headache_1_10 }}/10</span>
+        </div>
+        {% endif %}
       {% else %}
         <p class="muted">Nie wpisano jeszcze dzisiaj.</p>
         <a href="{% url 'wellbeing' %}" class="btn sm mt-2">Wpisz samopoczucie</a>
@@ -269,12 +334,30 @@
         <a href="{% url 'alerts' %}" class="btn secondary">Alerty SMS</a>
         <a href="{% url 'data' %}" class="btn secondary">Surowe dane</a>
         <a href="{% url 'trends' %}" class="btn secondary">Trendy (wykresy)</a>
+        <a href="{% url 'symptom_log' %}" class="btn secondary">Zgłoś dolegliwość</a>
         <a href="{% url 'settings' %}" class="btn secondary">Ustawienia</a>
       </div>
     </div>
   </div>
 
 </div>
+
+{# ── Onboarding modal (shown once after first login + password change) ── #}
+{% if show_onboarding %}
+<div class="onboarding-backdrop" id="onboarding-backdrop">
+  <div class="onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onb-title">
+    <h2 id="onb-title">Witaj w Zdrowa!</h2>
+    {% if prof.gender == "female" %}
+      <p>Dla dokładniejszych prognoz ryzyka możesz uzupełnić informacje o cyklu miesiączkowym w <a href="{% url 'settings' %}">Ustawieniach</a>.</p>
+      <p>Sprawdź też pozostałe ustawienia: profile zdrowotne, numer telefonu i progi alertów.</p>
+    {% else %}
+      <p>Sprawdź <a href="{% url 'settings' %}">Ustawienia</a>, aby spersonalizować alerty: uzupełnij numer telefonu, wybierz profile zdrowotne i skonfiguruj progi.</p>
+    {% endif %}
+    <button class="btn" onclick="document.getElementById('onboarding-backdrop').style.display='none'">Rozumiem, zamknij</button>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}

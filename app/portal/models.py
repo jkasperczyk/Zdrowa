@@ -27,6 +27,7 @@ class UserProfile(models.Model):
 
     # Password policy
     must_change_password = models.BooleanField(default=False)
+    has_seen_onboarding = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -40,6 +41,9 @@ class DailyWellbeing(models.Model):
     day = models.DateField()
     stress_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
     exercise_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
+    sleep_quality_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
+    hydration_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
+    headache_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -48,4 +52,4 @@ class DailyWellbeing(models.Model):
         indexes = [models.Index(fields=["user", "day"])]
 
     def __str__(self) -> str:
-        return f"{self.user.username} {self.day} S={self.stress_1_10} E={self.exercise_1_10}"
+        return f"{self.user.username} {self.day} S={self.stress_1_10} E={self.exercise_1_10} Sl={self.sleep_quality_1_10}"

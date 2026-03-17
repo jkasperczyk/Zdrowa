@@ -236,6 +236,9 @@ def write_wellbeing(
     day: str,
     stress_1_10: Optional[int] = None,
     exercise_1_10: Optional[int] = None,
+    sleep_quality_1_10: Optional[int] = None,
+    hydration_1_10: Optional[int] = None,
+    headache_1_10: Optional[int] = None,
 ) -> bool:
     """Upsert a user's daily wellbeing into the wellbeing table in feedback.db.
     Creates the table if it doesn't exist yet (Health_Guard may not have run yet)."""
@@ -247,25 +250,37 @@ def write_wellbeing(
             c.execute(
                 """
                 CREATE TABLE IF NOT EXISTS wellbeing (
-                    phone         TEXT NOT NULL,
-                    day           TEXT NOT NULL,
-                    stress_1_10   INTEGER,
-                    exercise_1_10 INTEGER,
-                    updated_at    TEXT NOT NULL DEFAULT '',
+                    phone              TEXT NOT NULL,
+                    day                TEXT NOT NULL,
+                    stress_1_10        INTEGER,
+                    exercise_1_10      INTEGER,
+                    sleep_quality_1_10 INTEGER,
+                    hydration_1_10     INTEGER,
+                    headache_1_10      INTEGER,
+                    updated_at         TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (phone, day)
                 )
                 """
             )
+            # Additive migrations for older tables
+            existing_cols = {r[1] for r in c.execute("PRAGMA table_info(wellbeing)").fetchall()}
+            for col in ("sleep_quality_1_10", "hydration_1_10", "headache_1_10"):
+                if col not in existing_cols:
+                    c.execute(f"ALTER TABLE wellbeing ADD COLUMN {col} INTEGER;")
+
             c.execute(
                 """
-                INSERT INTO wellbeing(phone, day, stress_1_10, exercise_1_10, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO wellbeing(phone, day, stress_1_10, exercise_1_10, sleep_quality_1_10, hydration_1_10, headache_1_10, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(phone, day) DO UPDATE SET
-                    stress_1_10   = excluded.stress_1_10,
-                    exercise_1_10 = excluded.exercise_1_10,
-                    updated_at    = excluded.updated_at
+                    stress_1_10        = excluded.stress_1_10,
+                    exercise_1_10      = excluded.exercise_1_10,
+                    sleep_quality_1_10 = excluded.sleep_quality_1_10,
+                    hydration_1_10     = excluded.hydration_1_10,
+                    headache_1_10      = excluded.headache_1_10,
+                    updated_at         = excluded.updated_at
                 """,
-                (phone, day, stress_1_10, exercise_1_10, now),
+                (phone, day, stress_1_10, exercise_1_10, sleep_quality_1_10, hydration_1_10, headache_1_10, now),
             )
             c.commit()
         finally:
@@ -276,10 +291,11 @@ def write_wellbeing(
 
 
 def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str, Any]:
-    """Returns live data for the dashboard: latest score per profile + env factors.
+    """Returns live data for the dashboard: latest score per profile + env factors + trend.
 
     Returns:
-        scores: dict of profile -> {score, threshold, label, dt, ts, reasons, tier}
+        scores: dict of profile -> {score, base_score, threshold, label, dt, ts, reasons, tier,
+                                     trend (up/down/stable), modifier_pct}
         env:    dict of selected env keys from feats_json of the most recent reading
         last_dt: UTC datetime string of the most recent reading, or None
     """
@@ -293,13 +309,17 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
         cols = set(_cols(c, "readings"))
         has_feats = "feats_json" in cols
         has_label = "label" in cols
+        has_base_score = "base_score" in cols
 
         scores: Dict[str, Any] = {}
         newest_ts = 0
         newest_feats: Dict[str, Any] = {}
+        since_24h = int((datetime.now(tz=timezone.utc) - timedelta(hours=24)).timestamp())
 
         for profile in profiles:
             sel = ["ts", "score", "threshold"]
+            if has_base_score:
+                sel.append("base_score")
             if has_label:
                 sel.append("label")
             sel.append("reasons_json")
@@ -332,6 +352,11 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
                 newest_feats = feats
 
             score = d.get("score") or 0
+            base_score_val = d.get("base_score") if has_base_score else None
+            if base_score_val is None:
+                base_score_val = score  # fallback for old rows without base_score
+            base_score_val = int(base_score_val)
+
             th = d.get("threshold") or 60
             if score >= th:
                 tier = "red"
@@ -340,14 +365,41 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
             else:
                 tier = "green"
 
+            # Modifier percentage display
+            modifier_pct = 0
+            if base_score_val > 0 and score != base_score_val:
+                modifier_pct = round((score / base_score_val - 1) * 100)
+
+            # Trend: compare current base_score to 24h average base_score
+            trend = "stable"
+            try:
+                base_col = "base_score" if has_base_score else "score"
+                avg_row = c.execute(
+                    f"SELECT AVG(COALESCE({base_col}, score)) FROM readings "
+                    "WHERE phone=? AND profile=? AND ts>=?",
+                    (phone, profile, since_24h)
+                ).fetchone()
+                if avg_row and avg_row[0] is not None and avg_row[0] > 0:
+                    avg_24h = float(avg_row[0])
+                    ratio = base_score_val / avg_24h
+                    if ratio > 1.10:
+                        trend = "up"
+                    elif ratio < 0.90:
+                        trend = "down"
+            except Exception:
+                trend = "stable"
+
             scores[profile] = {
                 "score": score,
+                "base_score": base_score_val,
+                "modifier_pct": modifier_pct,
                 "threshold": th,
                 "label": d.get("label") or "",
                 "dt": _utc_dt(ts) if ts else None,
                 "ts": ts,
                 "reasons": reasons[:5],
                 "tier": tier,
+                "trend": trend,
             }
 
         env: Dict[str, Any] = {}
@@ -574,5 +626,169 @@ def batch_recent_alerts(db_path: str, phones: List[str], days: int = 7, limit_pe
         return result
     except Exception:
         return {}
+    finally:
+        c.close()
+
+
+def wellbeing_history(db_path: str, phone: str, days: int = 30) -> List[Dict[str, Any]]:
+    """Return wellbeing entries for a phone, newest first, within last N days."""
+    if not os.path.exists(db_path):
+        return []
+    since_day = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "wellbeing"):
+            return []
+        cols = set(_cols(c, "wellbeing"))
+        sel = ["day", "stress_1_10", "exercise_1_10"]
+        for col in ("sleep_quality_1_10", "hydration_1_10", "headache_1_10"):
+            if col in cols:
+                sel.append(col)
+        q = f"SELECT {', '.join(sel)} FROM wellbeing WHERE phone=? AND day>=? ORDER BY day DESC"
+        rows = c.execute(q, (phone, since_day)).fetchall()
+        return [{k: r[k] for k in sel if k in r.keys()} for r in rows]
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+def export_user_data(
+    db_path: str,
+    phone: str,
+    profile: str,
+    days: int = 90,
+) -> List[Dict[str, Any]]:
+    """Export unified data for CSV: readings + wellbeing + alerts, date-keyed, newest first."""
+    if not os.path.exists(db_path):
+        return []
+    since = int((datetime.now(tz=timezone.utc) - timedelta(days=days)).timestamp())
+    since_day = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    c = _connect_feedback(db_path)
+    try:
+        # readings
+        readings_map: Dict[str, Dict] = {}
+        if _table_exists(c, "readings"):
+            cols_r = set(_cols(c, "readings"))
+            has_base = "base_score" in cols_r
+            base_col = "base_score, " if has_base else ""
+            rows = c.execute(
+                f"SELECT ts, score, {base_col}threshold, label FROM readings "
+                "WHERE phone=? AND profile=? AND ts>=? ORDER BY ts DESC",
+                (phone, profile, since)
+            ).fetchall()
+            for r in rows:
+                day = datetime.fromtimestamp(int(r["ts"]), tz=timezone.utc).strftime("%Y-%m-%d")
+                if day not in readings_map:
+                    readings_map[day] = {
+                        "date": day,
+                        "score": r["score"],
+                        "base_score": r["base_score"] if has_base else r["score"],
+                        "threshold": r["threshold"],
+                        "label": r["label"] or "",
+                        "alert_sent": False,
+                    }
+
+        # alerts
+        if _table_exists(c, "alerts"):
+            rows = c.execute(
+                "SELECT ts FROM alerts WHERE phone=? AND profile=? AND ts>=?",
+                (phone, profile, since)
+            ).fetchall()
+            for r in rows:
+                day = datetime.fromtimestamp(int(r["ts"]), tz=timezone.utc).strftime("%Y-%m-%d")
+                if day in readings_map:
+                    readings_map[day]["alert_sent"] = True
+
+        # wellbeing
+        wb_map: Dict[str, Dict] = {}
+        if _table_exists(c, "wellbeing"):
+            cols_wb = set(_cols(c, "wellbeing"))
+            sel = ["day", "stress_1_10", "exercise_1_10"]
+            for col in ("sleep_quality_1_10", "hydration_1_10", "headache_1_10"):
+                if col in cols_wb:
+                    sel.append(col)
+            rows = c.execute(
+                f"SELECT {', '.join(sel)} FROM wellbeing WHERE phone=? AND day>=? ORDER BY day DESC",
+                (phone, since_day)
+            ).fetchall()
+            for r in rows:
+                wb_map[r["day"]] = {k: r[k] for k in sel}
+
+        # Merge into unified rows (all dates from readings + wellbeing)
+        all_days = sorted(set(list(readings_map.keys()) + list(wb_map.keys())), reverse=True)
+        result = []
+        for day in all_days:
+            row: Dict[str, Any] = {"date": day}
+            row.update(readings_map.get(day, {}))
+            wb = wb_map.get(day, {})
+            for f in ("stress_1_10", "exercise_1_10", "sleep_quality_1_10", "hydration_1_10", "headache_1_10"):
+                row[f] = wb.get(f)
+            result.append(row)
+        return result
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+def write_symptom_log(
+    db_path: str,
+    phone: str,
+    profile: str,
+    severity_1_10: int,
+    notes: Optional[str] = None,
+    feats: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Record a user-reported symptom entry in feedback.db."""
+    try:
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute(
+                """
+                CREATE TABLE IF NOT EXISTS symptom_log (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone         TEXT NOT NULL,
+                    timestamp     TEXT NOT NULL,
+                    profile       TEXT NOT NULL,
+                    severity_1_10 INTEGER NOT NULL,
+                    notes         TEXT,
+                    feats_json    TEXT
+                )
+                """
+            )
+            feats_json = json.dumps(feats, ensure_ascii=False) if feats else None
+            c.execute(
+                "INSERT INTO symptom_log(phone, timestamp, profile, severity_1_10, notes, feats_json) VALUES(?,?,?,?,?,?)",
+                (phone, now, profile, severity_1_10, notes or None, feats_json),
+            )
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception:
+        return False
+
+
+def symptom_log_history(db_path: str, phone: str, days: int = 30) -> List[Dict[str, Any]]:
+    """Return symptom log entries for a phone, newest first."""
+    if not os.path.exists(db_path):
+        return []
+    since = (datetime.now(tz=timezone.utc) - timedelta(days=days)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "symptom_log"):
+            return []
+        rows = c.execute(
+            "SELECT id, timestamp, profile, severity_1_10, notes FROM symptom_log "
+            "WHERE phone=? AND timestamp>=? ORDER BY timestamp DESC LIMIT 100",
+            (phone, since)
+        ).fetchall()
+        return [{"id": r["id"], "timestamp": r["timestamp"], "profile": r["profile"],
+                 "severity": r["severity_1_10"], "notes": r["notes"] or ""} for r in rows]
+    except Exception:
+        return []
     finally:
         c.close()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date
 from typing import List, Dict, Any, Optional
 
@@ -18,7 +20,14 @@ from .wg_sources import (
     available_profiles,
     write_wellbeing,
     write_wg_user,
+    wellbeing_history,
+    export_user_data,
+    write_symptom_log,
+    symptom_log_history,
 )
+
+ALERT_PROFILES = ["migraine", "allergy", "heart"]
+
 
 def _get_profile(user) -> UserProfile:
     prof, _ = UserProfile.objects.get_or_create(user=user)
@@ -35,7 +44,10 @@ def _get_profile(user) -> UserProfile:
 def data_view(request: HttpRequest) -> HttpResponse:
     prof = _get_profile(request.user)
     if not prof.phone_e164:
-        return render(request, "portal/data.html", {"prof": prof, "rows": [], "profiles": [], "selected_profile": ""})
+        return render(request, "portal/data.html", {
+            "prof": prof, "rows": [], "profiles": [], "selected_profile": "",
+            "wb_rows": [],
+        })
 
     profiles = available_profiles(settings.WEATHERGUARD_DB, prof.phone_e164, days=30) or ["migraine", "allergy", "heart"]
     selected_profile = (request.GET.get("profile") or "").strip() or prof.default_profile or (profiles[0] if profiles else "migraine")
@@ -44,9 +56,13 @@ def data_view(request: HttpRequest) -> HttpResponse:
 
     rows = readings_last_days(settings.WEATHERGUARD_DB, prof.phone_e164, selected_profile, days=7, limit=1500)
 
+    # Also include base_score if available
     kset = set()
     for r in rows:
         kset.update(r.keys())
+
+    # Wellbeing history for this period
+    wb_rows = wellbeing_history(settings.WEATHERGUARD_DB, prof.phone_e164, days=7)
 
     return render(request, "portal/data.html", {
         "prof": prof,
@@ -57,6 +73,8 @@ def data_view(request: HttpRequest) -> HttpResponse:
         "has_risk": "risk" in kset,
         "has_threshold": "threshold" in kset,
         "has_details": "details" in kset,
+        "has_base_score": "base_score" in kset,
+        "wb_rows": wb_rows,
     })
 
 @login_required
@@ -182,19 +200,25 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
     entry, _ = DailyWellbeing.objects.get_or_create(user=request.user, day=today)
 
     if request.method == "POST":
-        def _int_or_none(key: str) -> Optional[int]:
+        def _int_or_none(key: str, min_val: int = 1, max_val: int = 10) -> Optional[int]:
             v = (request.POST.get(key) or "").strip()
             try:
                 n = int(v)
-                return n if 1 <= n <= 10 else None
+                return n if min_val <= n <= max_val else None
             except ValueError:
                 return None
 
         stress = _int_or_none("stress_1_10")
         exercise = _int_or_none("exercise_1_10")
+        sleep_quality = _int_or_none("sleep_quality_1_10")
+        hydration = _int_or_none("hydration_1_10")
+        headache = _int_or_none("headache_1_10", min_val=0)  # headache starts at 0
 
         entry.stress_1_10 = stress
         entry.exercise_1_10 = exercise
+        entry.sleep_quality_1_10 = sleep_quality
+        entry.hydration_1_10 = hydration
+        entry.headache_1_10 = headache
         entry.save()
 
         if not prof.phone_e164:
@@ -206,6 +230,9 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
                 day=today.isoformat(),
                 stress_1_10=stress,
                 exercise_1_10=exercise,
+                sleep_quality_1_10=sleep_quality,
+                hydration_1_10=hydration,
+                headache_1_10=headache,
             )
             if ok:
                 messages.success(request, "Zapisano samopoczucie na dziś.")
@@ -214,3 +241,74 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
         return redirect("wellbeing")
 
     return render(request, "portal/wellbeing.html", {"prof": prof, "entry": entry, "today": today})
+
+
+@login_required
+def csv_export_view(request: HttpRequest) -> HttpResponse:
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        messages.error(request, "Brak numeru telefonu w profilu.")
+        return redirect("data")
+
+    profile = (request.GET.get("profile") or prof.default_profile or "migraine").strip()
+    rows = export_user_data(settings.WEATHERGUARD_DB, prof.phone_e164, profile, days=90)
+
+    today_str = date.today().strftime("%Y%m%d")
+    phone_clean = prof.phone_e164.replace("+", "").replace(" ", "")
+    filename = f"zdrowa_export_{phone_clean}_{today_str}.csv"
+
+    output = io.StringIO()
+    fieldnames = ["date", "score", "base_score", "threshold", "label", "alert_sent",
+                  "stress_1_10", "exercise_1_10", "sleep_quality_1_10", "hydration_1_10", "headache_1_10"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({k: ("" if row.get(k) is None else row.get(k)) for k in fieldnames})
+
+    response = HttpResponse(output.getvalue(), content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def symptom_log_view(request: HttpRequest) -> HttpResponse:
+    prof = _get_profile(request.user)
+
+    if request.method == "POST":
+        profile = (request.POST.get("profile") or "migraine").strip()
+        if profile not in ALERT_PROFILES:
+            profile = "migraine"
+        sev_raw = (request.POST.get("severity_1_10") or "").strip()
+        try:
+            severity = int(sev_raw)
+            if not (1 <= severity <= 10):
+                severity = 5
+        except ValueError:
+            severity = 5
+        notes = (request.POST.get("notes") or "").strip()[:500]
+
+        if not prof.phone_e164:
+            messages.warning(request, "Brak numeru telefonu — nie można zsynchronizować z systemem alertów.")
+        else:
+            ok = write_symptom_log(
+                settings.WEATHERGUARD_DB,
+                phone=prof.phone_e164,
+                profile=profile,
+                severity_1_10=severity,
+                notes=notes or None,
+            )
+            if ok:
+                messages.success(request, "Dolegliwość zapisana.")
+            else:
+                messages.warning(request, "Nie udało się zapisać dolegliwości.")
+        return redirect("symptom_log")
+
+    history = []
+    if prof.phone_e164:
+        history = symptom_log_history(settings.WEATHERGUARD_DB, prof.phone_e164, days=30)
+
+    return render(request, "portal/symptom_log.html", {
+        "prof": prof,
+        "history": history,
+        "profiles": ALERT_PROFILES,
+    })

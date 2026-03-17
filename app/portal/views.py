@@ -53,10 +53,14 @@ def password_change_view(request: HttpRequest) -> HttpResponse:
         if form.is_valid():
             user = form.save()
             update_session_auth_hash(request, user)
-            # clear flag
+            # clear flag; trigger first-login onboarding popup
             if not request.user.is_staff:
+                was_forced = bool(prof.must_change_password)
                 prof.must_change_password = False
                 prof.save(update_fields=["must_change_password", "updated_at"])
+                # Show onboarding popup once if this was a forced password change
+                if was_forced and not prof.has_seen_onboarding:
+                    request.session["show_onboarding"] = True
             messages.success(request, "Hasło zostało zmienione.")
             return redirect("dashboard")
     else:
@@ -79,11 +83,19 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     except Exception:
         today_wb = None
 
+    # First-login onboarding popup
+    show_onboarding = False
+    if request.session.pop("show_onboarding", False) and not prof.has_seen_onboarding:
+        show_onboarding = True
+        prof.has_seen_onboarding = True
+        prof.save(update_fields=["has_seen_onboarding", "updated_at"])
+
     return render(request, "portal/dashboard.html", {
         "prof": prof,
         "summary": summary,
         "today_wb": today_wb,
         "greeting": make_greeting(request.user.first_name, getattr(prof, "gender", "")),
+        "show_onboarding": show_onboarding,
     })
 
 @login_required
