@@ -1178,6 +1178,54 @@ def correlation_data(db_path: str, phone: str, profile: str, days: int = 30) -> 
         c.close()
 
 
+def delete_all_user_data(db_path: str, phone: str) -> None:
+    """Delete ALL data for a phone number from feedback.db. Called on account self-deletion."""
+    if not phone or not os.path.exists(db_path):
+        return
+    import sqlite3 as _sq3
+    c = _sq3.connect(db_path)
+    c.row_factory = _sq3.Row
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+        # Create audit log
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS deletions_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT NOT NULL,
+                deleted_at TEXT NOT NULL,
+                note TEXT
+            )
+        """)
+        now = datetime.now(tz=timezone.utc).isoformat()
+        c.execute("INSERT INTO deletions_log (phone, deleted_at, note) VALUES (?,?,?)",
+                  (phone, now, "self-delete via web UI"))
+        # Purge tables keyed by phone
+        for tbl, col in [
+            ("readings", "phone"), ("alerts", "phone"), ("wellbeing", "phone"),
+            ("symptom_log", "phone"), ("forecast_alerts", "phone"),
+            ("alerts_queue", "phone"), ("push_subscriptions", "phone"),
+            ("weekly_reports", "phone"), ("wg_users", "phone"),
+        ]:
+            try:
+                rows = c.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name=?", (tbl,)).fetchone()
+                if rows:
+                    c.execute(f"DELETE FROM {tbl} WHERE {col}=?", (phone,))
+            except Exception:
+                pass
+        # sms_users uses phone_e164
+        try:
+            rows = c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='sms_users'").fetchone()
+            if rows:
+                c.execute("DELETE FROM sms_users WHERE phone_e164=?", (phone,))
+        except Exception:
+            pass
+        c.commit()
+    except Exception:
+        pass
+    finally:
+        c.close()
+
+
 def symptom_log_history(db_path: str, phone: str, days: int = 30) -> List[Dict[str, Any]]:
     """Return symptom log entries for a phone, newest first."""
     if not os.path.exists(db_path):

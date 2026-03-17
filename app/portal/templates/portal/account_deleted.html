@@ -1,0 +1,19 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="page-center">
+  <div class="card" style="text-align:center;max-width:500px;padding:40px 32px">
+    <div style="font-size:3.5rem;margin-bottom:20px">💚</div>
+    <h1 style="font-size:1.5rem;font-weight:800;margin-bottom:12px">Konto usunięte</h1>
+    <p class="muted" style="line-height:1.7;margin-bottom:8px">
+      Dziękujemy za korzystanie z aplikacji Zdrowa.
+      Twoje konto zostało trwale usunięte.
+    </p>
+    <p class="muted small">
+      Wszystkie dane osobowe i zdrowotne zostały usunięte z naszych systemów.
+    </p>
+    <div style="margin-top:28px">
+      <a href="{% url 'login' %}" class="btn secondary">Powrót do strony logowania</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

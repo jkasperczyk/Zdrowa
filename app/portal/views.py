@@ -31,16 +31,51 @@ from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, Dele
 from .users_import import parse_users_txt, dedupe_by_phone
 
 def login_view(request: HttpRequest) -> HttpResponse:
+    from django.utils import timezone as _tz
+    from datetime import timedelta
     if request.user.is_authenticated:
         return redirect("dashboard")
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
         password = request.POST.get("password", "")
+        # Check if account is locked
+        try:
+            target_user = User.objects.get(username__iexact=username)
+            target_prof = UserProfile.objects.get(user=target_user)
+            if target_prof.locked_until and target_prof.locked_until > _tz.now():
+                remaining = max(1, int((target_prof.locked_until - _tz.now()).total_seconds() / 60) + 1)
+                messages.error(request, f"Konto zablokowane na {remaining} min. z powodu zbyt wielu nieudanych prób.")
+                return render(request, "portal/login.html", {})
+        except (User.DoesNotExist, UserProfile.DoesNotExist):
+            pass
         user = authenticate(request, username=username, password=password)
         if user is not None:
+            # Reset lockout on successful login
+            try:
+                p = UserProfile.objects.get(user=user)
+                if p.failed_login_count or p.locked_until:
+                    p.failed_login_count = 0
+                    p.locked_until = None
+                    p.save(update_fields=["failed_login_count", "locked_until"])
+            except UserProfile.DoesNotExist:
+                pass
             login(request, user)
             return redirect("dashboard")
-        messages.error(request, "Nieprawidłowy login lub hasło.")
+        # Failed login
+        try:
+            target_user = User.objects.get(username__iexact=username)
+            target_prof, _ = UserProfile.objects.get_or_create(user=target_user)
+            target_prof.failed_login_count = (target_prof.failed_login_count or 0) + 1
+            if target_prof.failed_login_count >= 5:
+                target_prof.locked_until = _tz.now() + timedelta(minutes=15)
+                target_prof.save(update_fields=["failed_login_count", "locked_until"])
+                messages.error(request, "Zbyt wiele nieudanych prób. Konto zablokowane na 15 minut.")
+            else:
+                remaining_tries = max(0, 5 - target_prof.failed_login_count)
+                target_prof.save(update_fields=["failed_login_count"])
+                messages.error(request, f"Nieprawidłowy login lub hasło. Pozostało prób: {remaining_tries}.")
+        except (User.DoesNotExist, Exception):
+            messages.error(request, "Nieprawidłowy login lub hasło.")
     return render(request, "portal/login.html", {})
 
 def logout_view(request: HttpRequest) -> HttpResponse:
@@ -660,9 +695,9 @@ def pwa_manifest(request: HttpRequest) -> HttpResponse:
         "theme_color": "#080f1d",
         "orientation": "portrait-primary",
         "icons": [
-            {"src": f"{icons_url}/icon-192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": f"{icons_url}/icon-512.png", "sizes": "512x512", "type": "image/png"},
-            {"src": f"{icons_url}/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": f"{icons_url}/icon-192.png?v=3", "sizes": "192x192", "type": "image/png"},
+            {"src": f"{icons_url}/icon-512.png?v=3", "sizes": "512x512", "type": "image/png"},
+            {"src": f"{icons_url}/icon-512.png?v=3", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
     }
     return HttpResponse(
@@ -673,7 +708,7 @@ def pwa_manifest(request: HttpRequest) -> HttpResponse:
 
 def pwa_sw(request: HttpRequest) -> HttpResponse:
     sw_js = r"""
-const CACHE = 'zdrowa-v2';
+const CACHE = 'zdrowa-v3';
 const SHELL = [
   '/',
   '/static/portal/icons/icon-192.png',
@@ -811,3 +846,106 @@ def process_push_queue(request: HttpRequest) -> HttpResponse:
             messages.error(request, f"Błąd: {error}")
         return redirect("admin_system")
     return HttpResponse(f"Wyślij POST aby przetworzyć kolejkę. Przykład: curl -X POST {request.build_absolute_uri()}", content_type="text/plain")
+
+
+@login_required
+def account_export_view(request: HttpRequest) -> HttpResponse:
+    """Generate and serve a ZIP archive of all user data."""
+    import zipfile, io, csv as _csv, json as _json, sqlite3 as _sq3
+    prof = _get_profile(request.user)
+    phone = prof.phone_e164
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # profile.json
+        profile_data = {
+            "username": request.user.username,
+            "email": request.user.email,
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
+            "phone_e164": phone,
+            "gender": prof.gender,
+            "location": prof.location,
+            "alert_threshold": prof.alert_threshold,
+            "quiet_hours": prof.quiet_hours,
+            "enabled_alerts": prof.enabled_alerts,
+            "created_at": prof.created_at.isoformat() if prof.created_at else "",
+        }
+        zf.writestr("profile.json", _json.dumps(profile_data, ensure_ascii=False, indent=2))
+
+        # wellbeing.csv from Django DB
+        wb_buf = io.StringIO()
+        wb_w = _csv.writer(wb_buf)
+        wb_w.writerow(["day","stress_1_10","exercise_1_10","sleep_quality_1_10","hydration_1_10","headache_1_10"])
+        for row in DailyWellbeing.objects.filter(user=request.user).order_by("day"):
+            wb_w.writerow([row.day, row.stress_1_10, row.exercise_1_10,
+                           row.sleep_quality_1_10, row.hydration_1_10, row.headache_1_10])
+        zf.writestr("wellbeing.csv", wb_buf.getvalue())
+
+        # Data from feedback.db
+        if phone and os.path.exists(settings.WEATHERGUARD_DB):
+            try:
+                conn = _sq3.connect(settings.WEATHERGUARD_DB)
+                conn.row_factory = _sq3.Row
+                for tbl, fname_csv in [
+                    ("readings", "readings.csv"), ("alerts", "alerts.csv"),
+                    ("symptom_log", "symptoms.csv"), ("weekly_reports", "reports.csv"),
+                ]:
+                    try:
+                        rows = conn.execute(f"SELECT * FROM {tbl} WHERE phone=? ORDER BY rowid", (phone,)).fetchall()
+                        if rows:
+                            f_buf = io.StringIO()
+                            w = _csv.writer(f_buf)
+                            w.writerow(list(rows[0].keys()))
+                            for r in rows:
+                                w.writerow(list(r))
+                            zf.writestr(fname_csv, f_buf.getvalue())
+                    except Exception:
+                        pass
+                conn.close()
+            except Exception:
+                pass
+
+    buf.seek(0)
+    phone_clean = (phone or "user").replace("+", "").replace(" ", "")
+    from datetime import date as _d
+    out_fname = f"zdrowa_export_{phone_clean}_{_d.today()}.zip"
+    resp = HttpResponse(buf.read(), content_type="application/zip")
+    resp["Content-Disposition"] = f'attachment; filename="{out_fname}"'
+    return resp
+
+
+@login_required
+def account_delete_view(request: HttpRequest) -> HttpResponse:
+    """Self-service account deletion with password confirmation."""
+    if request.user.is_staff or request.user.is_superuser:
+        messages.error(request, "Konta administracyjne nie mogą być usunięte z tego poziomu.")
+        return redirect("settings")
+    if request.method != "POST":
+        return redirect("settings")
+    password = request.POST.get("delete_password", "")
+    if not request.user.check_password(password):
+        messages.error(request, "Nieprawidłowe hasło — konto nie zostało usunięte.")
+        return redirect("settings")
+    prof = _get_profile(request.user)
+    phone = prof.phone_e164
+    from .wg_sources import delete_all_user_data
+    try:
+        delete_all_user_data(settings.WEATHERGUARD_DB, phone)
+    except Exception:
+        pass
+    request.user.delete()
+    logout(request)
+    return redirect("account_deleted")
+
+
+def account_deleted_view(request: HttpRequest) -> HttpResponse:
+    return render(request, "portal/account_deleted.html", {})
+
+
+def register_view(request: HttpRequest) -> HttpResponse:
+    registration_open = getattr(settings, "REGISTRATION_OPEN", False)
+    if not registration_open:
+        return render(request, "portal/register.html", {"registration_open": False})
+    # Future: implement full registration form
+    return render(request, "portal/register.html", {"registration_open": True})

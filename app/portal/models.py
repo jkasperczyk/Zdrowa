@@ -28,6 +28,8 @@ class UserProfile(models.Model):
     # Password policy
     must_change_password = models.BooleanField(default=False)
     has_seen_onboarding = models.BooleanField(default=False)
+    failed_login_count = models.IntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

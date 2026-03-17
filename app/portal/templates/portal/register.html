@@ -1,0 +1,18 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="page-center">
+  <div class="card" style="max-width:440px;text-align:center;padding:40px 32px">
+    <div style="font-size:2.5rem;margin-bottom:16px">🔒</div>
+    <h1 style="font-size:1.4rem;font-weight:800;margin-bottom:12px">Rejestracja</h1>
+    {% if not registration_open %}
+      <p class="muted" style="line-height:1.7;margin-bottom:20px">
+        Rejestracja nowych kont jest obecnie <b>zamknięta</b>.<br>
+        Konta tworzone są przez administratora systemu.
+      </p>
+      <a href="{% url 'login' %}" class="btn secondary sm">Powrót do logowania</a>
+    {% else %}
+      <p class="muted">Formularz rejestracji — wkrótce.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

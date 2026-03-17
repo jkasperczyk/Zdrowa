@@ -102,6 +102,10 @@ User browser (PWA) → Django views → portal DB (SQLite, owns users/profiles)
 /export/                 → CSV export
 /password/change/        → password change
 /push/subscribe/         → POST: save/remove push subscription
+/account/export/         → download ZIP of all personal data
+/account/delete/         → POST: delete account (password required)
+/account/deleted/        → confirmation page (no login required)
+/register/               → registration (disabled by default)
 /admin-tools/            → staff: user management
 /admin-tools/push-queue/ → staff: process pending push queue
 /admin/                  → Django admin
@@ -120,4 +124,12 @@ User browser (PWA) → Django views → portal DB (SQLite, owns users/profiles)
 
 - Login uses email as username.
 - New users get temporary passwords and `must_change_password=True`, enforced by middleware.
-- Minimum password length: 10 characters.
+- Minimum password length: 8 characters + at least one digit (`portal.validators.HasNumberValidator`).
+- Login rate limiting: 5 failed attempts → account locked for 15 minutes (`UserProfile.failed_login_count`, `locked_until`).
+- Registration disabled by default (`REGISTRATION_OPEN = False` in settings.py); `/register/` shows a "closed" page.
+
+### Account Management
+
+- `/account/export/` — generates a ZIP archive with profile.json + all personal data CSVs (wellbeing, readings, alerts, symptoms, reports).
+- `/account/delete/` — POST with password confirmation; purges all user data from both DBs, logs deletion to `deletions_log` table, then deletes the Django account and redirects to `/account/deleted/`.
+- Staff/superuser accounts are protected from self-deletion via the UI.

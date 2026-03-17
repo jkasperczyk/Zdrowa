@@ -26,4 +26,9 @@ urlpatterns = [
     path("admin-tools/", views.admin_tools, name="admin_tools"),
     path("admin-tools/user/<int:user_id>/", views.admin_user_edit, name="admin_user_edit"),
     path("admin-tools/system/", views.admin_system, name="admin_system"),
+
+    path("account/export/", views.account_export_view, name="account_export"),
+    path("account/delete/", views.account_delete_view, name="account_delete"),
+    path("account/deleted/", views.account_deleted_view, name="account_deleted"),
+    path("register/", views.register_view, name="register"),
 ]

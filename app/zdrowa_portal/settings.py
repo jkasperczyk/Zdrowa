@@ -67,9 +67,10 @@ DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": DB_PATH
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 10}},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {"NAME": "portal.validators.HasNumberValidator"},
 ]
 
 LANGUAGE_CODE = "pl"
@@ -133,3 +134,5 @@ VAPID_SUBJECT     = env("VAPID_SUBJECT", "mailto:admin@zdrowa.pracunia.pl")
 # OpenAI for weekly health reports
 OPENAI_API_KEY = env("OPENAI_API_KEY", "")
 OPENAI_MODEL   = env("OPENAI_MODEL", "gpt-4o-mini")
+
+REGISTRATION_OPEN = False
