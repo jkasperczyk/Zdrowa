@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="pl">
+<script>
+  /* Apply saved theme ASAP to avoid flash of wrong theme */
+  (function(){
+    var t=localStorage.getItem('zdrowa-theme')||'dark';
+    document.documentElement.setAttribute('data-theme',t);
+  })();
+</script>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" id="meta-theme-color" content="#080f1d">
+  <title>Health Guard — Twój system wczesnego ostrzegania zdrowotnego</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* ═══ DESIGN TOKENS — DARK (default) ════════════════════════ */
+    :root {
+      --bg:        #080f1d;
+      --bg-mesh:   radial-gradient(ellipse 90% 55% at 50% -8%,  rgba(79,143,255,.09) 0%, transparent 65%),
+                   radial-gradient(ellipse 45% 35% at 8%  60%,  rgba(79,143,255,.04) 0%, transparent 55%),
+                   radial-gradient(ellipse 45% 35% at 92% 80%,  rgba(16,217,160,.04) 0%, transparent 55%);
+      --glass:         linear-gradient(145deg, rgba(255,255,255,.07) 0%, rgba(255,255,255,.025) 100%);
+      --glass-border:  rgba(255,255,255,.1);
+      --glass-top:     rgba(255,255,255,.2);
+      --text:   #eaf0ff;
+      --text-2: #b8ccee;
+      --muted:  #7090b8;
+      --dim:    #3d5575;
+      --accent:     #4f8fff;
+      --accent-h:   #6ba3ff;
+      --accent-dim: rgba(79,143,255,.13);
+      --green:      #22c55e;
+      --green-dim:  rgba(34,197,94,.12);
+      --green-glow: rgba(34,197,94,.4);
+      --border:     rgba(255,255,255,.07);
+      --r-xs: 6px; --r-sm: 10px; --r: 16px; --r-lg: 22px; --r-xl: 28px;
+      --shadow:    0 4px 16px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.3),
+                   inset 0 1px 0 var(--glass-top);
+      --shadow-lg: 0 8px 40px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4),
+                   inset 0 1px 0 var(--glass-top);
+      --t:      .18s ease;
+      --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    }
+
+    /* ═══ DESIGN TOKENS — LIGHT ══════════════════════════════════ */
+    [data-theme="light"] {
+      --bg:        #f0f4f8;
+      --bg-mesh:   radial-gradient(ellipse 90% 55% at 50% -8%,  rgba(79,143,255,.05) 0%, transparent 65%),
+                   radial-gradient(ellipse 45% 35% at 8%  60%,  rgba(79,143,255,.03) 0%, transparent 55%),
+                   radial-gradient(ellipse 45% 35% at 92% 80%,  rgba(16,217,160,.03) 0%, transparent 55%);
+      --glass:         linear-gradient(145deg, rgba(255,255,255,.98) 0%, rgba(255,255,255,.94) 100%);
+      --glass-border:  rgba(0,0,0,.09);
+      --glass-top:     rgba(255,255,255,1);
+      --text:   #0f172a;
+      --text-2: #334155;
+      --muted:  #64748b;
+      --dim:    #94a3b8;
+      --accent:     #3b82f6;
+      --accent-h:   #2563eb;
+      --accent-dim: rgba(59,130,246,.12);
+      --green:      #16a34a;
+      --green-dim:  rgba(22,163,74,.12);
+      --green-glow: rgba(22,163,74,.25);
+      --border:     rgba(0,0,0,.08);
+      --shadow:    0 2px 12px rgba(0,0,0,.07), 0 1px 3px rgba(0,0,0,.05);
+      --shadow-lg: 0 8px 28px rgba(0,0,0,.1),  0 2px 8px rgba(0,0,0,.06);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+    body {
+      font-family: var(--font);
+      background-color: var(--bg);
+      background-image: var(--bg-mesh);
+      background-attachment: fixed;
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; transition: color var(--t); }
+    a:hover { color: var(--accent-h); }
+
+    /* ── Nav ── */
+    .top-bar {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(8,15,29,.88);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
+      border-bottom: 1px solid rgba(255,255,255,.07);
+      height: 56px; display: flex; align-items: center;
+      padding: 0 24px; justify-content: space-between;
+    }
+    [data-theme="light"] .top-bar {
+      background: rgba(255,255,255,.9);
+      border-bottom-color: rgba(0,0,0,.1);
+    }
+    .brand {
+      font-weight: 800; font-size: .95rem; letter-spacing: -.025em;
+      color: var(--text); display: flex; align-items: center; gap: 6px;
+    }
+    .brand-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--green) 100%);
+      box-shadow: 0 0 10px var(--green-glow);
+      animation: dot-pulse 3s ease-in-out infinite;
+    }
+    @keyframes dot-pulse {
+      0%, 100% { box-shadow: 0 0 10px var(--green-glow); }
+      50%       { box-shadow: 0 0 20px var(--green-glow), 0 0 32px rgba(34,197,94,.25); }
+    }
+    .top-bar-actions { display: flex; gap: 8px; align-items: center; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      padding: 9px 20px; border-radius: var(--r-sm);
+      font-family: var(--font); font-size: .875rem; font-weight: 600; line-height: 1.4;
+      cursor: pointer; white-space: nowrap; text-decoration: none;
+      transition: transform .1s ease, box-shadow .18s ease, background .1s ease;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--green) 0%, #16a34a 100%);
+      color: #fff; border: 1px solid rgba(255,255,255,.18);
+      box-shadow: 0 1px 3px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px var(--green-glow), 0 1px 3px rgba(0,0,0,.3);
+      color: #fff;
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+      color: var(--text-2);
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2);
+      color: var(--text); transform: translateY(-1px);
+    }
+    [data-theme="light"] .btn-secondary {
+      background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.12); color: #334155;
+    }
+    [data-theme="light"] .btn-secondary:hover {
+      background: rgba(0,0,0,.09); border-color: rgba(0,0,0,.18); color: #0f172a;
+    }
+    .btn-lg { padding: 13px 28px; font-size: 1rem; border-radius: var(--r); }
+    .btn-sm { padding: 6px 14px; font-size: .82rem; }
+
+    /* ── Layout ── */
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 96px 24px 80px;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--green-dim); border: 1px solid rgba(34,197,94,.25);
+      color: var(--green); font-size: .78rem; font-weight: 600;
+      padding: 4px 14px; border-radius: 999px; margin-bottom: 28px;
+      letter-spacing: .03em;
+    }
+    .hero h1 {
+      font-size: clamp(2.4rem, 6vw, 4rem);
+      font-weight: 900; letter-spacing: -.04em; line-height: 1.05;
+      margin-bottom: 20px;
+    }
+    .hero h1 .accent { color: var(--green); }
+    .hero-sub {
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      color: var(--text-2); font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .hero-desc {
+      font-size: .95rem; color: var(--muted);
+      max-width: 560px; margin: 0 auto 40px;
+      line-height: 1.7;
+    }
+    .hero-cta {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    }
+
+    /* ── Features ── */
+    .section {
+      padding: 80px 0;
+    }
+    .section-label {
+      text-align: center;
+      font-size: .72rem; font-weight: 600; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--green);
+      margin-bottom: 12px;
+    }
+    .section h2 {
+      text-align: center;
+      font-size: clamp(1.5rem, 4vw, 2.2rem);
+      font-weight: 800; letter-spacing: -.03em;
+      margin-bottom: 12px;
+    }
+    .section-desc {
+      text-align: center;
+      color: var(--muted); font-size: .95rem;
+      max-width: 500px; margin: 0 auto 56px;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-top-color: var(--glass-top);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      padding: 28px 24px;
+      transition: border-color var(--t), box-shadow var(--t), transform var(--t);
+    }
+    [data-theme="light"] .feature-card { backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .feature-card:hover {
+      border-color: rgba(34,197,94,.3);
+      box-shadow: var(--shadow-lg), 0 0 0 1px rgba(34,197,94,.12);
+      transform: translateY(-3px);
+    }
+    .feature-icon {
+      font-size: 2rem; display: block; margin-bottom: 16px; line-height: 1;
+    }
+    .feature-card h3 {
+      font-size: 1rem; font-weight: 700; letter-spacing: -.015em;
+      margin-bottom: 8px; color: var(--text);
+    }
+    .feature-card p {
+      font-size: .85rem; color: var(--muted); line-height: 1.6; margin: 0;
+    }
+
+    /* ── How it works ── */
+    .steps-section {
+      padding: 80px 0;
+      background: rgba(34,197,94,.025);
+      border-top: 1px solid rgba(34,197,94,.08);
+      border-bottom: 1px solid rgba(34,197,94,.08);
+    }
+    [data-theme="light"] .steps-section {
+      background: rgba(22,163,74,.03);
+      border-color: rgba(22,163,74,.1);
+    }
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 32px;
+      margin-top: 56px;
+    }
+    .step {
+      display: flex; gap: 20px; align-items: flex-start;
+    }
+    .step-num {
+      flex-shrink: 0;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--green) 0%, #16a34a 100%);
+      color: #fff; font-weight: 800; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 16px var(--green-glow);
+    }
+    .step-content h3 {
+      font-size: .95rem; font-weight: 700; margin-bottom: 6px; color: var(--text);
+    }
+    .step-content p {
+      font-size: .85rem; color: var(--muted); margin: 0; line-height: 1.6;
+    }
+
+    /* ── CTA section ── */
+    .cta-section {
+      padding: 96px 24px;
+      text-align: center;
+    }
+    .cta-section h2 {
+      font-size: clamp(1.6rem, 4vw, 2.4rem);
+      font-weight: 900; letter-spacing: -.04em;
+      margin-bottom: 16px;
+    }
+    .cta-section p {
+      color: var(--muted); font-size: .95rem;
+      max-width: 480px; margin: 0 auto 40px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 32px 24px;
+      text-align: center;
+      color: var(--dim);
+      font-size: .82rem;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+    .footer-links { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+
+    /* ── Divider ── */
+    .divider {
+      border: none; border-top: 1px solid var(--border); margin: 0;
+    }
+
+    @media (max-width: 600px) {
+      .hero { padding: 64px 0 56px; }
+      .section { padding: 56px 0; }
+      .steps-section { padding: 56px 0; }
+      .cta-section { padding: 64px 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="top-bar">
+    <div class="brand">
+      <span class="brand-dot"></span>Health Guard
+    </div>
+    <div class="top-bar-actions">
+      <a href="/login/" class="btn btn-secondary btn-sm">Zaloguj się</a>
+      <a href="/register/" class="btn btn-primary btn-sm">Utwórz konto</a>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="hero wrap">
+    <div class="hero-badge">
+      <span>●</span> System monitorowania zdrowia w czasie rzeczywistym
+    </div>
+    <h1>
+      Twoje zdrowie<br>pod <span class="accent">inteligentną</span> ochroną
+    </h1>
+    <p class="hero-sub">Twój osobisty system wczesnego ostrzegania zdrowotnego</p>
+    <p class="hero-desc">
+      Health Guard analizuje warunki atmosferyczne, jakość powietrza i stężenie pyłków,
+      aby ostrzegać Cię z wyprzedzeniem przed zagrożeniami dla zdrowia — migreną, alergią i dolegliwościami kardiologicznymi.
+    </p>
+    <div class="hero-cta">
+      <a href="/register/" class="btn btn-primary btn-lg">Utwórz konto</a>
+      <a href="/login/" class="btn btn-secondary btn-lg">Zaloguj się</a>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Features -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section-label">Funkcje</div>
+      <h2>Wszystko czego potrzebujesz</h2>
+      <p class="section-desc">Kompleksowy system monitorowania zdrowia oparty na danych środowiskowych w czasie rzeczywistym.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <span class="feature-icon">🌡️</span>
+          <h3>Monitoring w czasie rzeczywistym</h3>
+          <p>Śledzenie ciśnienia atmosferycznego, temperatury, wilgotności, jakości powietrza i stężenia pyłków co godzinę.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🔔</span>
+          <h3>Inteligentne alerty</h3>
+          <p>Powiadomienia push wysyłane zanim pojawią się objawy — system uczy się Twojego wzorca reagowania na warunki.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">📊</span>
+          <h3>Personalizacja</h3>
+          <p>Własne progi alertów, harmonogram ciszy nocnej i szczegółowe wykresy trendów dostosowane do Twojego profilu.</p>
+        </div>
+        <div class="feature-card">
+          <span class="feature-icon">🏥</span>
+          <h3>Trzy profile zdrowotne</h3>
+          <p>Dedykowane profile dla migreny, alergii i zdrowia sercowo-naczyniowego z odrębnymi modelami ryzyka.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="steps-section">
+    <div class="wrap">
+      <div class="section-label">Jak to działa</div>
+      <h2>Trzy kroki do lepszego zdrowia</h2>
+      <div class="steps-grid">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h3>Utwórz konto i skonfiguruj profil</h3>
+            <p>Wybierz profile zdrowotne (migrena, alergia, serce) i ustaw indywidualne progi alertów oraz numer telefonu.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h3>Wyraź zgodę na powiadomienia</h3>
+            <p>Włącz powiadomienia push — system będzie Cię ostrzegać gdy warunki atmosferyczne przekroczą Twój próg ryzyka.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h3>Monitoruj i reaguj z wyprzedzeniem</h3>
+            <p>Śledź wykresy trendów, zapisuj samopoczucie i korzystaj z tygodniowych raportów AI aby rozumieć swoje zdrowie.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta-section">
+    <h2>Zacznij dbać o siebie już dziś</h2>
+    <p>Rejestracja jest bezpłatna. Skonfiguruj swój profil w mniej niż 2 minuty.</p>
+    <div class="hero-cta">
+      <a href="/register/" class="btn btn-primary btn-lg">Utwórz darmowe konto</a>
+      <a href="/login/" class="btn btn-secondary btn-lg">Mam już konto</a>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Footer -->
+  <footer>
+    <div>Health Guard &copy; 2026</div>
+    <div class="footer-links">
+      <a href="#">Polityka prywatności</a>
+      <a href="mailto:admin@zdrowa.pracunia.pl">Kontakt</a>
+      <a href="/login/">Logowanie</a>
+      <a href="/register/">Rejestracja</a>
+    </div>
+  </footer>
+
+  <script>
+    /* Update theme-color meta on theme change */
+    (function(){
+      var meta = document.getElementById('meta-theme-color');
+      var t = document.documentElement.getAttribute('data-theme') || 'dark';
+      if (meta) meta.content = t === 'light' ? '#f0f4f8' : '#080f1d';
+    })();
+  </script>
+</body>
+</html>

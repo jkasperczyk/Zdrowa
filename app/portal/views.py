@@ -1125,3 +1125,26 @@ def resend_verification_view(request: HttpRequest) -> HttpResponse:
         except User.DoesNotExist:
             error = "Nie znaleziono konta oczekującego na weryfikację dla tego adresu e-mail."
     return render(request, "portal/resend_verification.html", {"sent": sent, "error": error})
+
+
+def landing_view(request: HttpRequest) -> HttpResponse:
+    """Public landing page — redirects authenticated users to dashboard."""
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+    return render(request, "portal/landing.html", {})
+
+
+@login_required
+def api_alerts_preview(request: HttpRequest) -> HttpResponse:
+    from django.http import JsonResponse
+    from .wg_sources import get_recent_alerts_for_user, mark_alerts_read
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        return JsonResponse({"alerts": [], "count": 0})
+    # Mark as read
+    try:
+        mark_alerts_read(settings.WEATHERGUARD_DB, prof.phone_e164)
+    except Exception:
+        pass
+    alerts = get_recent_alerts_for_user(settings.WEATHERGUARD_DB, prof.phone_e164, limit=5)
+    return JsonResponse({"alerts": alerts, "count": len(alerts)})

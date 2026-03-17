@@ -1246,3 +1246,60 @@ def symptom_log_history(db_path: str, phone: str, days: int = 30) -> List[Dict[s
         return []
     finally:
         c.close()
+
+
+def get_recent_alerts_for_user(db_path: str, phone: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Return recent alerts from alerts_queue for a user, newest first."""
+    if not os.path.exists(db_path):
+        return []
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "alerts_queue"):
+            return []
+        cols = set(_cols(c, "alerts_queue"))
+        sel = ["id", "profile", "score", "message", "created_at"]
+        sel = [col for col in sel if col in cols]
+        if not sel:
+            return []
+        q = f"SELECT {', '.join(sel)} FROM alerts_queue WHERE phone=? ORDER BY created_at DESC LIMIT ?"
+        rows = c.execute(q, (phone, limit)).fetchall()
+        out = []
+        for r in rows:
+            d = {k: r[k] for k in sel if k in r.keys()}
+            out.append({
+                "id": d.get("id"),
+                "profile": d.get("profile") or "",
+                "score": d.get("score") or 0,
+                "message": d.get("message") or "",
+                "created_at": d.get("created_at") or "",
+            })
+        return out
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+def mark_alerts_read(db_path: str, phone: str) -> None:
+    """Mark all unread alerts_queue entries for a phone as read by user."""
+    if not os.path.exists(db_path):
+        return
+    c = sqlite3.connect(db_path)
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        if not _table_exists_raw(c, "alerts_queue"):
+            return
+        # Add user_read_at column if it doesn't exist yet
+        existing_cols = {r[1] for r in c.execute("PRAGMA table_info(alerts_queue)").fetchall()}
+        if "user_read_at" not in existing_cols:
+            c.execute("ALTER TABLE alerts_queue ADD COLUMN user_read_at TEXT;")
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c.execute(
+            "UPDATE alerts_queue SET user_read_at=? WHERE phone=? AND user_read_at IS NULL",
+            (now, phone)
+        )
+        c.commit()
+    except Exception:
+        pass
+    finally:
+        c.close()

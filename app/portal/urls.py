@@ -7,7 +7,8 @@ urlpatterns = [
     path("manifest.json", views.pwa_manifest, name="pwa_manifest"),
     path("sw.js", views.pwa_sw, name="pwa_sw"),
     path("offline/", views.pwa_offline, name="pwa_offline"),
-    path("", views.dashboard, name="dashboard"),
+    path("", views.landing_view, name="landing"),
+    path("dashboard/", views.dashboard, name="dashboard"),
     path("alerts/", views_wg.alerts, name="alerts"),
     path("data/", views_wg.data_view, name="data"),
     path("data/export/", views_wg.csv_export_view, name="csv_export"),
@@ -54,4 +55,11 @@ urlpatterns = [
     path("register/", views.register_view, name="register"),
     path("verify-email/<uidb64>/<token>/", views.verify_email_view, name="verify_email"),
     path("verify-email/resend/", views.resend_verification_view, name="resend_verification"),
+
+    # JSON API
+    path("api/alerts-preview/", views.api_alerts_preview, name="api_alerts_preview"),
+    path("api/trend-scores/", views_wg.api_trend_scores, name="api_trend_scores"),
+    path("api/trend-factors/", views_wg.api_trend_factors, name="api_trend_factors"),
+    path("api/trend-wellbeing/", views_wg.api_trend_wellbeing, name="api_trend_wellbeing"),
+    path("api/trend-symptoms/", views_wg.api_trend_symptoms, name="api_trend_symptoms"),
 ]

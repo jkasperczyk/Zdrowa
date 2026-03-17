@@ -1,5 +1,28 @@
 {% extends "portal/base.html" %}
 {% block extra_css %}
+.trend-controls {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+}
+.trend-controls .btn-days {
+  padding: 5px 14px; border-radius: var(--r-sm);
+  font-size: .82rem; font-weight: 600; cursor: pointer;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1);
+  color: var(--muted); font-family: var(--font);
+  transition: background var(--t), color var(--t);
+}
+.trend-controls .btn-days:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.trend-controls .btn-days.active {
+  background: var(--accent-dim); border-color: rgba(79,143,255,.3);
+  color: var(--accent-h);
+}
+[data-theme="light"] .trend-controls .btn-days.active { border-color: rgba(59,130,246,.3); }
+.chart-wrap {
+  position: relative; width: 100%; min-height: 240px;
+}
+.chart-spinner {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: .85rem; color: var(--muted);
+}
 .trend-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -27,13 +50,19 @@
 .trend-card:hover .trend-icon { background: rgba(79,143,255,.2); }
 .trend-name { font-size: .875rem; font-weight: 500; word-break: break-word; }
 .trend-sub  { font-size: .75rem; color: var(--dim); margin-top: 2px; }
+.factor-select-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.r-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: .72rem; font-weight: 700; letter-spacing: .04em;
+}
 {% endblock %}
+
 {% block content %}
 <div class="stack">
   <div class="flex-between">
     <div>
       <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Trendy</h1>
-      <p class="muted small">Wykresy wygenerowane przez WeatherGuard dla Twojego numeru telefonu.</p>
+      <p class="muted small">Interaktywne wykresy ryzyka, czynników środowiskowych i samopoczucia.</p>
     </div>
   </div>
 
@@ -42,24 +71,404 @@
       <p>Ustaw numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>, aby widzieć wykresy.</p>
     </div>
   {% else %}
-    {% if items %}
-      <div class="trend-grid">
-        {% for it in items %}
-          <a class="card trend-card" href="/trends/file/{{ it.name }}/" target="_blank" rel="noopener">
-            <div class="trend-icon">📈</div>
-            <div>
-              <div class="trend-name">{{ it.name }}</div>
-              <div class="trend-sub">Otwórz w nowej karcie</div>
-            </div>
-          </a>
-        {% endfor %}
+
+  <!-- Global controls -->
+  <div class="card" style="padding:16px 20px">
+    <div class="flex-between">
+      <div class="trend-controls">
+        <span class="muted small" style="flex-shrink:0">Zakres:</span>
+        <button class="btn-days" data-days="7">7 dni</button>
+        <button class="btn-days active" data-days="30">30 dni</button>
+        <button class="btn-days" data-days="90">90 dni</button>
       </div>
-    {% else %}
-      <div class="card" style="text-align:center;padding:48px 24px">
-        <div style="font-size:2.5rem;margin-bottom:12px;opacity:.35">📊</div>
-        <p class="muted" style="margin:0">Brak trendów dla tego numeru telefonu.<br>Wykresy pojawią się po zebraniu wystarczających danych.</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="font-size:.82rem;color:var(--muted);margin:0" for="profile-sel">Profil:</label>
+        <select id="profile-sel" style="min-width:120px;padding:5px 10px;font-size:.82rem">
+          {% for p in profiles %}
+            <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>
+              {{ p|capfirst }}
+            </option>
+          {% endfor %}
+        </select>
       </div>
-    {% endif %}
+    </div>
+  </div>
+
+  <!-- Chart 1: Risk Score Trends -->
+  <div class="card">
+    <h3 style="margin-bottom:4px">Wyniki ryzyka w czasie</h3>
+    <p class="muted small" style="margin-bottom:16px">Dzienne maksimum wyniku bazowego i końcowego. Czerwone punkty = zgłoszone dolegliwości.</p>
+    <div class="chart-wrap" style="height:300px">
+      <div class="chart-spinner" id="chart1-spinner">Ładowanie...</div>
+      <canvas id="chart-scores" style="display:none"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 2: Factor Correlation -->
+  <div class="card">
+    <div class="factor-select-row">
+      <h3 style="margin:0">Korelacja czynników środowiskowych</h3>
+      <select id="factor-sel" style="padding:5px 10px;font-size:.82rem;min-width:180px">
+        <option value="pressure_delta">Zmiana ciśnienia</option>
+        <option value="aqi">Jakość powietrza (AQI)</option>
+        <option value="pollen_total">Pyłki</option>
+        <option value="humidity">Wilgotność</option>
+        <option value="temperature">Zmiana temperatury</option>
+        <option value="dew_point">Punkt rosy</option>
+      </select>
+      <span id="r-badge-wrap"></span>
+    </div>
+    <p class="muted small" style="margin-bottom:16px">Lewa oś: wynik ryzyka. Prawa oś: wartość czynnika.</p>
+    <div class="chart-wrap" style="height:280px">
+      <div class="chart-spinner" id="chart2-spinner">Ładowanie...</div>
+      <canvas id="chart-factors" style="display:none"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 3: Wellbeing Trends -->
+  <div class="card">
+    <h3 style="margin-bottom:4px">Samopoczucie (1-10)</h3>
+    <p class="muted small" style="margin-bottom:16px">Dane tylko z dni, kiedy wpis był zapisany.</p>
+    <div class="chart-wrap" style="height:280px">
+      <div class="chart-spinner" id="chart3-spinner">Ładowanie...</div>
+      <canvas id="chart-wellbeing" style="display:none"></canvas>
+    </div>
+  </div>
+
+  <!-- Static PNG trend images -->
+  {% if items %}
+  <div>
+    <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:14px">Wykresy statyczne WeatherGuard</h2>
+    <div class="trend-grid">
+      {% for it in items %}
+        <a class="card trend-card" href="/trends/file/{{ it.name }}/" target="_blank" rel="noopener">
+          <div class="trend-icon">📈</div>
+          <div>
+            <div class="trend-name">{{ it.name }}</div>
+            <div class="trend-sub">Otwórz w nowej karcie</div>
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+{% if prof.phone_e164 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var currentDays = 30;
+  var currentProfile = document.getElementById('profile-sel') ? document.getElementById('profile-sel').value : 'migraine';
+  var chart1 = null, chart2 = null, chart3 = null;
+
+  function getCSSVar(v) {
+    return getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  }
+
+  function getThemeColors() {
+    return {
+      text:    getCSSVar('--text') || '#eaf0ff',
+      muted:   getCSSVar('--muted') || '#7090b8',
+      border:  getCSSVar('--border') || 'rgba(255,255,255,.07)',
+      green:   getCSSVar('--green') || '#10d9a0',
+      accent:  getCSSVar('--accent') || '#4f8fff',
+      amber:   getCSSVar('--amber') || '#f5a623',
+      red:     getCSSVar('--red') || '#ff5c5c',
+    };
+  }
+
+  /* ── Chart 1: Risk Scores ── */
+  function loadScores() {
+    var spinner = document.getElementById('chart1-spinner');
+    var canvas  = document.getElementById('chart-scores');
+    if (spinner) spinner.style.display = 'flex';
+    if (canvas)  canvas.style.display  = 'none';
+
+    var url = '/api/trend-scores/?days=' + currentDays + '&profile=' + encodeURIComponent(currentProfile);
+    fetch(url).then(function(r){ return r.json(); }).then(function(data) {
+      if (spinner) spinner.style.display = 'none';
+      if (canvas)  canvas.style.display  = 'block';
+      var tc = getThemeColors();
+      var ctx = canvas.getContext('2d');
+      if (chart1) chart1.destroy();
+
+      // Build zone plugin backgrounds
+      var zoneBg = {
+        id: 'zoneBg',
+        beforeDraw: function(chart) {
+          var ctx2 = chart.ctx;
+          var ya = chart.scales.y;
+          var xa = chart.scales.x;
+          if (!ya || !xa) return;
+          var xLeft  = xa.left;
+          var xRight = xa.right;
+          var getY   = function(v) { return ya.getPixelForValue(v); };
+
+          ctx2.save();
+          ctx2.fillStyle = 'rgba(16,217,160,.06)';
+          ctx2.fillRect(xLeft, getY(30), xRight - xLeft, getY(0) - getY(30));
+          ctx2.fillStyle = 'rgba(245,166,35,.06)';
+          ctx2.fillRect(xLeft, getY(60), xRight - xLeft, getY(30) - getY(60));
+          ctx2.fillStyle = 'rgba(255,92,92,.07)';
+          ctx2.fillRect(xLeft, getY(100), xRight - xLeft, getY(60) - getY(100));
+          ctx2.restore();
+        }
+      };
+
+      chart1 = new Chart(ctx, {
+        type: 'line',
+        plugins: [zoneBg],
+        data: {
+          labels: data.labels || [],
+          datasets: [
+            {
+              label: 'Wynik bazowy',
+              data: data.base_scores || [],
+              borderColor: tc.accent,
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.35,
+            },
+            {
+              label: 'Wynik końcowy',
+              data: data.final_scores || [],
+              borderColor: tc.green,
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              pointRadius: 2,
+              tension: 0.35,
+            },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: {
+              ticks: { color: tc.muted, maxRotation: 45, font: { size: 10 } },
+              grid:  { color: tc.border },
+            },
+            y: {
+              min: 0, max: 100,
+              ticks: { color: tc.muted, font: { size: 10 } },
+              grid:  { color: tc.border },
+            }
+          },
+          plugins: {
+            legend: { labels: { color: tc.text, font: { size: 11 } } },
+            tooltip: { bodyColor: tc.text, titleColor: tc.muted, backgroundColor: 'rgba(8,15,29,.92)' },
+          }
+        }
+      });
+
+      // Overlay symptom dots — load from symptom API
+      fetch('/api/trend-symptoms/?days=' + currentDays)
+        .then(function(r){ return r.json(); })
+        .then(function(symData) {
+          if (!symData.dates || !chart1) return;
+          var labels = data.labels || [];
+          var scores = data.final_scores || [];
+          var dotData = labels.map(function(lbl, i) {
+            var idx = symData.dates.indexOf(lbl);
+            if (idx >= 0) return scores[i];
+            return null;
+          });
+          chart1.data.datasets.push({
+            label: 'Dolegliwość',
+            data: dotData,
+            borderColor: tc.red,
+            backgroundColor: tc.red,
+            borderWidth: 0,
+            pointRadius: function(ctx) { return ctx.raw !== null ? 6 : 0; },
+            pointHoverRadius: 8,
+            showLine: false,
+            type: 'scatter',
+          });
+          chart1.update();
+        }).catch(function(){});
+
+    }).catch(function() {
+      if (spinner) spinner.textContent = 'Błąd ładowania danych.';
+    });
+  }
+
+  /* ── Chart 2: Factor Correlation ── */
+  function loadFactors() {
+    var spinner = document.getElementById('chart2-spinner');
+    var canvas  = document.getElementById('chart-factors');
+    if (spinner) spinner.style.display = 'flex';
+    if (canvas)  canvas.style.display  = 'none';
+
+    var factor  = document.getElementById('factor-sel') ? document.getElementById('factor-sel').value : 'pressure_delta';
+    var url = '/api/trend-factors/?days=' + currentDays + '&factor=' + encodeURIComponent(factor) + '&profile=' + encodeURIComponent(currentProfile);
+    fetch(url).then(function(r){ return r.json(); }).then(function(data) {
+      if (spinner) spinner.style.display = 'none';
+      if (canvas)  canvas.style.display  = 'block';
+      var tc = getThemeColors();
+      var ctx = canvas.getContext('2d');
+      if (chart2) chart2.destroy();
+
+      // Update r badge
+      var badge = document.getElementById('r-badge-wrap');
+      if (badge && data.r !== null && data.r !== undefined) {
+        var r = data.r;
+        var color = Math.abs(r) >= 0.6 ? tc.red : (Math.abs(r) >= 0.3 ? tc.amber : tc.muted);
+        badge.innerHTML = '<span class="r-badge" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:' + color + '">r = ' + r.toFixed(3) + '</span>';
+      } else if (badge) {
+        badge.innerHTML = '';
+      }
+
+      chart2 = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels || [],
+          datasets: [
+            {
+              label: 'Wynik ryzyka',
+              data: data.scores || [],
+              borderColor: tc.accent,
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: 'yScore',
+            },
+            {
+              label: data.factor_label || 'Czynnik',
+              data: data.factor_values || [],
+              borderColor: tc.amber,
+              backgroundColor: 'transparent',
+              borderWidth: 2,
+              tension: 0.3,
+              yAxisID: 'yFactor',
+              spanGaps: false,
+            },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: {
+              ticks: { color: tc.muted, maxRotation: 45, font: { size: 10 } },
+              grid:  { color: tc.border },
+            },
+            yScore: {
+              type: 'linear', position: 'left',
+              min: 0, max: 100,
+              ticks: { color: tc.accent, font: { size: 10 } },
+              grid:  { color: tc.border },
+              title: { display: true, text: 'Ryzyko', color: tc.accent, font: { size: 10 } },
+            },
+            yFactor: {
+              type: 'linear', position: 'right',
+              ticks: { color: tc.amber, font: { size: 10 } },
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: data.factor_label || '', color: tc.amber, font: { size: 10 } },
+            },
+          },
+          plugins: {
+            legend: { labels: { color: tc.text, font: { size: 11 } } },
+            tooltip: { bodyColor: tc.text, titleColor: tc.muted, backgroundColor: 'rgba(8,15,29,.92)' },
+          }
+        }
+      });
+    }).catch(function() {
+      if (spinner) spinner.textContent = 'Błąd ładowania danych.';
+    });
+  }
+
+  /* ── Chart 3: Wellbeing ── */
+  function loadWellbeing() {
+    var spinner = document.getElementById('chart3-spinner');
+    var canvas  = document.getElementById('chart-wellbeing');
+    if (spinner) spinner.style.display = 'flex';
+    if (canvas)  canvas.style.display  = 'none';
+
+    var url = '/api/trend-wellbeing/?days=' + currentDays;
+    fetch(url).then(function(r){ return r.json(); }).then(function(data) {
+      if (spinner) spinner.style.display = 'none';
+      if (canvas)  canvas.style.display  = 'block';
+      var tc = getThemeColors();
+      var ctx = canvas.getContext('2d');
+      if (chart3) chart3.destroy();
+
+      chart3 = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.labels || [],
+          datasets: [
+            { label: 'Stres',        data: data.stress,    borderColor: tc.red,    backgroundColor:'transparent', borderWidth:2, tension:.3, spanGaps:false, pointRadius:3 },
+            { label: 'Aktywność',    data: data.exercise,  borderColor: tc.green,  backgroundColor:'transparent', borderWidth:2, tension:.3, spanGaps:false, pointRadius:3 },
+            { label: 'Sen',          data: data.sleep,     borderColor: tc.accent, backgroundColor:'transparent', borderWidth:2, tension:.3, spanGaps:false, pointRadius:3 },
+            { label: 'Nawodnienie',  data: data.hydration, borderColor: '#06b6d4', backgroundColor:'transparent', borderWidth:2, tension:.3, spanGaps:false, pointRadius:3 },
+            { label: 'Ból głowy',    data: data.headache,  borderColor: tc.amber,  backgroundColor:'transparent', borderWidth:2, tension:.3, spanGaps:false, pointRadius:3 },
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            x: {
+              ticks: { color: tc.muted, maxRotation: 45, font: { size: 10 } },
+              grid:  { color: tc.border },
+            },
+            y: {
+              min: 0, max: 10,
+              ticks: { color: tc.muted, font: { size: 10 } },
+              grid:  { color: tc.border },
+            }
+          },
+          plugins: {
+            legend: { labels: { color: tc.text, font: { size: 11 } } },
+            tooltip: { bodyColor: tc.text, titleColor: tc.muted, backgroundColor: 'rgba(8,15,29,.92)' },
+          }
+        }
+      });
+    }).catch(function() {
+      if (spinner) spinner.textContent = 'Błąd ładowania danych.';
+    });
+  }
+
+  function loadAll() {
+    loadScores();
+    loadFactors();
+    loadWellbeing();
+  }
+
+  /* ── Controls ── */
+  document.querySelectorAll('.btn-days').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.btn-days').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      currentDays = parseInt(btn.dataset.days, 10);
+      loadAll();
+    });
+  });
+
+  var profileSel = document.getElementById('profile-sel');
+  if (profileSel) {
+    profileSel.addEventListener('change', function() {
+      currentProfile = this.value;
+      loadAll();
+    });
+  }
+
+  var factorSel = document.getElementById('factor-sel');
+  if (factorSel) {
+    factorSel.addEventListener('change', function() {
+      loadFactors();
+    });
+  }
+
+  // Initial load
+  loadAll();
+})();
+</script>
+{% endif %}
 {% endblock %}

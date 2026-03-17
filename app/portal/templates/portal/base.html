@@ -296,10 +296,64 @@
       color: var(--muted); font-size: 1.1rem; line-height: 1;
       background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
       transition: background var(--t);
+      cursor: pointer; font-family: var(--font);
     }
+    .nav-bell:hover { background: rgba(255,255,255,.09); }
     [data-theme="light"] .nav-bell {
       background: rgba(0,0,0,.05); border-color: rgba(0,0,0,.1);
     }
+    [data-theme="light"] .nav-bell:hover { background: rgba(0,0,0,.09); }
+    /* Bell badge (count) */
+    .bell-badge {
+      position: absolute; top: -4px; right: -4px;
+      min-width: 16px; height: 16px; border-radius: 999px;
+      background: var(--red, #ff5c5c); border: 2px solid var(--bg);
+      color: #fff; font-size: .6rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 3px; line-height: 1;
+    }
+    /* Alerts dropdown */
+    .alerts-dropdown {
+      position: absolute; top: 52px; right: 16px;
+      width: 320px; max-width: calc(100vw - 32px);
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-top-color: var(--glass-top);
+      border-radius: var(--r);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      z-index: 500;
+      overflow: hidden;
+    }
+    [data-theme="light"] .alerts-dropdown { backdrop-filter: none; -webkit-backdrop-filter: none; }
+    .alerts-dropdown-inner { max-height: 300px; overflow-y: auto; }
+    .alert-drop-item {
+      padding: 11px 16px; border-bottom: 1px solid var(--border);
+      font-size: .82rem;
+    }
+    .alert-drop-item:last-child { border-bottom: none; }
+    .alert-drop-profile {
+      font-size: .68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); margin-bottom: 3px;
+    }
+    .alert-drop-msg { color: var(--text-2); line-height: 1.45; }
+    .alert-drop-score {
+      font-size: .7rem; color: var(--red, #ff5c5c); font-weight: 700;
+      margin-top: 3px;
+    }
+    /* Push notification banner */
+    .push-banner {
+      background: linear-gradient(135deg, rgba(34,197,94,.12) 0%, rgba(79,143,255,.08) 100%);
+      border: 1px solid rgba(34,197,94,.22);
+      border-radius: var(--r-sm);
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex; align-items: center; gap: 12px;
+      font-size: .875rem;
+    }
+    .push-banner-text { flex: 1; color: var(--text-2); }
+    .push-banner-actions { display: flex; gap: 8px; flex-shrink: 0; }
     /* Theme toggle button */
     .theme-btn {
       background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.09);
@@ -690,7 +744,7 @@
 <body>
 
   <header class="top">
-    <a class="brand" href="/">
+    <a class="brand" href="/dashboard/">
       <span class="brand-dot"></span>zdrowa.pracunia.pl
     </a>
     <button class="nav-toggle"
@@ -701,7 +755,7 @@
     </button>
     <nav class="nav" id="main-nav">
       {% if request.user.is_authenticated %}
-        <a href="/"            class="{% if request.path == '/' %}active{% endif %}">Dashboard</a>
+        <a href="/dashboard/"  class="{% if request.path == '/dashboard/' %}active{% endif %}">Dashboard</a>
         <a href="/wellbeing/"  class="{% if '/wellbeing'  in request.path %}active{% endif %}">Samopoczucie</a>
         <a href="/alerts/"     class="{% if '/alerts'     in request.path %}active{% endif %}">Alerty</a>
         <a href="/data/"       class="{% if '/data'       in request.path %}active{% endif %}">Dane</a>
@@ -719,9 +773,18 @@
         <button class="theme-btn" id="theme-toggle" onclick="toggleTheme()" title="Zmień motyw" aria-label="Zmień motyw">
           <span id="theme-icon">☀️</span>
         </button>
-        <a href="/alerts/" class="nav-bell" id="nav-bell" title="Alerty">
-          🔔<span class="bell-dot" id="bell-dot" style="display:none;position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--red);border:2px solid var(--bg)"></span>
-        </a>
+        <button class="nav-bell" id="nav-bell" title="Alerty" onclick="toggleAlertsDropdown()" aria-label="Alerty">
+          🔔
+          <span class="bell-badge" id="bell-badge" style="display:none">{{ unread_count }}</span>
+        </button>
+        <div class="alerts-dropdown" id="alerts-dropdown" style="display:none">
+          <div class="alerts-dropdown-inner" id="alerts-dropdown-inner">
+            <p class="muted small" style="padding:12px 16px;margin:0">Ładowanie...</p>
+          </div>
+          <a href="/alerts/" style="display:block;text-align:center;padding:10px;font-size:.8rem;color:var(--accent-h);border-top:1px solid var(--border);text-decoration:none">
+            Wszystkie alerty →
+          </a>
+        </div>
         <span class="nav-user">{{ request.user.username }}</span>
         <a href="/logout/" class="btn sm secondary">Wyloguj</a>
       {% endif %}
@@ -729,6 +792,16 @@
   </header>
 
   <main class="wrap">
+    {% if request.user.is_authenticated and vapid_public_key %}
+    <div class="push-banner" id="push-banner" style="display:none">
+      <span>🔔</span>
+      <span class="push-banner-text">Włącz powiadomienia, aby otrzymywać alerty zdrowotne</span>
+      <div class="push-banner-actions">
+        <button class="btn sm" onclick="enablePushFromBanner()" style="background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;padding:6px 14px;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer">Włącz</button>
+        <button onclick="dismissPushBanner()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px;line-height:1">×</button>
+      </div>
+    </div>
+    {% endif %}
     {% for message in messages %}
       <div class="msg{% if 'warning' in message.tags %} warning{% elif 'error' in message.tags %} error{% elif 'success' in message.tags %} success{% endif %}">{{ message }}</div>
     {% endfor %}
@@ -804,17 +877,50 @@
       }).catch(function(){});
     }
 
-    navigator.serviceWorker.ready.then(function(reg) {
-      reg.pushManager.getSubscription().then(function(existing) {
-        if (existing) { sendSubscription(existing, 'subscribe'); return; }
-        if (Notification.permission === 'denied') return;
+    function subscribePush(reg) {
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      }).then(function(sub) { sendSubscription(sub, 'subscribe'); }).catch(function(){});
+    }
+
+    // Exposed globally so the banner button can trigger it
+    window.enablePushFromBanner = function() {
+      var banner = document.getElementById('push-banner');
+      navigator.serviceWorker.ready.then(function(reg) {
         Notification.requestPermission().then(function(permission) {
           if (permission !== 'granted') return;
-          reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          }).then(function(sub) { sendSubscription(sub, 'subscribe'); }).catch(function(){});
+          subscribePush(reg);
+          if (banner) banner.style.display = 'none';
+          localStorage.setItem('push-banner-dismissed', '1');
         });
+      });
+    };
+
+    window.dismissPushBanner = function() {
+      var banner = document.getElementById('push-banner');
+      if (banner) banner.style.display = 'none';
+      localStorage.setItem('push-banner-dismissed', '1');
+    };
+
+    navigator.serviceWorker.ready.then(function(reg) {
+      reg.pushManager.getSubscription().then(function(existing) {
+        if (existing) {
+          // Re-register on each load to keep subscription fresh
+          sendSubscription(existing, 'subscribe');
+          return;
+        }
+        if (Notification.permission === 'denied') return;
+        if (Notification.permission === 'granted') {
+          // Already granted but no subscription yet — subscribe silently
+          subscribePush(reg);
+          return;
+        }
+        // Permission is 'default' — show banner if not dismissed
+        if (localStorage.getItem('push-banner-dismissed') !== '1') {
+          var banner = document.getElementById('push-banner');
+          if (banner) banner.style.display = 'flex';
+        }
       });
     });
   })();
@@ -823,10 +929,68 @@
   {% if unread_count %}
   <script>
   (function() {
-    var dot = document.getElementById('bell-dot');
-    if (dot) dot.style.display = 'block';
+    var badge = document.getElementById('bell-badge');
+    if (badge) badge.style.display = 'flex';
   })();
   </script>
   {% endif %}
+  <script>
+  /* ── Alerts dropdown ── */
+  (function() {
+    var _loaded = false;
+
+    window.toggleAlertsDropdown = function() {
+      var dd = document.getElementById('alerts-dropdown');
+      if (!dd) return;
+      var isOpen = dd.style.display !== 'none';
+      if (isOpen) {
+        dd.style.display = 'none';
+        return;
+      }
+      dd.style.display = 'block';
+      // Hide badge once opened
+      var badge = document.getElementById('bell-badge');
+      if (badge) badge.style.display = 'none';
+
+      if (_loaded) return;
+      _loaded = true;
+      fetch('/api/alerts-preview/')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          var inner = document.getElementById('alerts-dropdown-inner');
+          if (!inner) return;
+          if (!data.alerts || data.alerts.length === 0) {
+            inner.innerHTML = '<p class="muted small" style="padding:12px 16px;margin:0">Brak nowych alertów.</p>';
+            return;
+          }
+          var html = '';
+          for (var i = 0; i < data.alerts.length; i++) {
+            var a = data.alerts[i];
+            var profileLabels = {migraine: 'Migrena', allergy: 'Alergia', heart: 'Serce'};
+            var label = profileLabels[a.profile] || a.profile;
+            html += '<div class="alert-drop-item">'
+              + '<div class="alert-drop-profile">' + label + ' &bull; ' + (a.created_at || '').substring(0, 16).replace('T', ' ') + '</div>'
+              + '<div class="alert-drop-msg">' + (a.message || 'Alert zdrowotny') + '</div>'
+              + '<div class="alert-drop-score">Wynik: ' + (a.score || 0) + '/100</div>'
+              + '</div>';
+          }
+          inner.innerHTML = html;
+        })
+        .catch(function() {
+          var inner = document.getElementById('alerts-dropdown-inner');
+          if (inner) inner.innerHTML = '<p class="muted small" style="padding:12px 16px;margin:0">Nie można załadować alertów.</p>';
+        });
+    };
+
+    // Close when clicking outside
+    document.addEventListener('click', function(e) {
+      var dd = document.getElementById('alerts-dropdown');
+      var bell = document.getElementById('nav-bell');
+      if (dd && dd.style.display !== 'none' && !dd.contains(e.target) && e.target !== bell && !bell.contains(e.target)) {
+        dd.style.display = 'none';
+      }
+    });
+  })();
+  </script>
 </body>
 </html>

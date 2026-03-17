@@ -423,3 +423,262 @@ def _generate_report_for_user(phone: str) -> bool:
             report_html = f"<p>Błąd generowania raportu: {e}</p>"
 
     return save_weekly_report(db, phone, week_start.isoformat(), week_end.isoformat(), report_html)
+
+
+# ── JSON API — trend charts ────────────────────────────────────────────────────
+
+@login_required
+def api_trend_scores(request):
+    """GET /api/trend-scores/?days=30&profile=migraine
+    Returns: {"labels": ["2026-03-01", ...], "base_scores": [...], "final_scores": [...]}
+    """
+    from django.http import JsonResponse
+    import sqlite3 as _sq3, json as _json
+    from datetime import datetime, timedelta, timezone
+
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        return JsonResponse({"labels": [], "base_scores": [], "final_scores": []})
+
+    try:
+        days = max(1, min(365, int(request.GET.get("days", 30))))
+    except (ValueError, TypeError):
+        days = 30
+
+    profile = (request.GET.get("profile") or "").strip() or prof.default_profile or "migraine"
+
+    db = settings.WEATHERGUARD_DB
+    import os
+    if not os.path.exists(db):
+        return JsonResponse({"labels": [], "base_scores": [], "final_scores": []})
+
+    since = int((datetime.now(tz=timezone.utc) - timedelta(days=days)).timestamp())
+    try:
+        c = _sq3.connect(db)
+        c.row_factory = _sq3.Row
+        try:
+            cols_info = {r[1] for r in c.execute("PRAGMA table_info(readings)").fetchall()}
+            has_base = "base_score" in cols_info
+            if has_base:
+                rows = c.execute(
+                    "SELECT ts, score, base_score FROM readings WHERE phone=? AND profile=? AND ts>=? ORDER BY ts ASC",
+                    (prof.phone_e164, profile, since)
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT ts, score FROM readings WHERE phone=? AND profile=? AND ts>=? ORDER BY ts ASC",
+                    (prof.phone_e164, profile, since)
+                ).fetchall()
+        finally:
+            c.close()
+    except Exception:
+        return JsonResponse({"labels": [], "base_scores": [], "final_scores": []})
+
+    # Aggregate by day (max score per day)
+    day_base: Dict[str, float] = {}
+    day_final: Dict[str, float] = {}
+    for row in rows:
+        ts = row["ts"] or 0
+        score = float(row["score"] or 0)
+        base = float(row["base_score"] if has_base and row["base_score"] is not None else score)
+        day = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+        if day not in day_final or score > day_final[day]:
+            day_final[day] = score
+        if day not in day_base or base > day_base[day]:
+            day_base[day] = base
+
+    labels = sorted(day_final.keys())
+    return JsonResponse({
+        "labels": labels,
+        "base_scores": [day_base.get(d, 0) for d in labels],
+        "final_scores": [day_final.get(d, 0) for d in labels],
+    })
+
+
+@login_required
+def api_trend_factors(request):
+    """GET /api/trend-factors/?days=30&factor=pressure_delta
+    Returns: {"labels": [...], "scores": [...], "factor_values": [...], "factor_label": "...", "r": 0.45}
+    """
+    from django.http import JsonResponse
+    import sqlite3 as _sq3, json as _json
+    from datetime import datetime, timedelta, timezone
+    import os
+
+    FACTOR_KEYS = {
+        "pressure_delta": "pressure_delta_6h",
+        "aqi":            "aqi_us_max_6h",
+        "pollen_total":   "pollen_max_6h",
+        "humidity":       "humidity_now",
+        "temperature":    "temp_delta_6h",
+        "dew_point":      "dew_point_now",
+    }
+    FACTOR_LABELS = {
+        "pressure_delta": "Zmiana ciśnienia (hPa/6h)",
+        "aqi":            "Jakość powietrza (AQI)",
+        "pollen_total":   "Pyłki",
+        "humidity":       "Wilgotność (%)",
+        "temperature":    "Zmiana temp. (°C/6h)",
+        "dew_point":      "Punkt rosy (°C)",
+    }
+
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        return JsonResponse({"labels": [], "scores": [], "factor_values": [], "factor_label": "", "r": None})
+
+    try:
+        days = max(1, min(365, int(request.GET.get("days", 30))))
+    except (ValueError, TypeError):
+        days = 30
+
+    factor_key_user = (request.GET.get("factor") or "pressure_delta").strip()
+    factor_key = FACTOR_KEYS.get(factor_key_user, "pressure_delta_6h")
+    factor_label = FACTOR_LABELS.get(factor_key_user, factor_key_user)
+
+    profile = (request.GET.get("profile") or "").strip() or prof.default_profile or "migraine"
+
+    db = settings.WEATHERGUARD_DB
+    if not os.path.exists(db):
+        return JsonResponse({"labels": [], "scores": [], "factor_values": [], "factor_label": factor_label, "r": None})
+
+    since = int((datetime.now(tz=timezone.utc) - timedelta(days=days)).timestamp())
+    try:
+        c = _sq3.connect(db)
+        c.row_factory = _sq3.Row
+        try:
+            cols_info = {r[1] for r in c.execute("PRAGMA table_info(readings)").fetchall()}
+            has_feats = "feats_json" in cols_info
+            if has_feats:
+                rows = c.execute(
+                    "SELECT ts, score, feats_json FROM readings WHERE phone=? AND profile=? AND ts>=? ORDER BY ts ASC",
+                    (prof.phone_e164, profile, since)
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    "SELECT ts, score FROM readings WHERE phone=? AND profile=? AND ts>=? ORDER BY ts ASC",
+                    (prof.phone_e164, profile, since)
+                ).fetchall()
+        finally:
+            c.close()
+    except Exception:
+        return JsonResponse({"labels": [], "scores": [], "factor_values": [], "factor_label": factor_label, "r": None})
+
+    # Aggregate by day
+    day_score: Dict[str, float] = {}
+    day_factor: Dict[str, Optional[float]] = {}
+    for row in rows:
+        ts = row["ts"] or 0
+        score = float(row["score"] or 0)
+        day = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+        if day not in day_score or score > day_score[day]:
+            day_score[day] = score
+        if has_feats and row["feats_json"] and day not in day_factor:
+            try:
+                feats = _json.loads(row["feats_json"]) or {}
+                val = feats.get(factor_key)
+                if val is not None:
+                    day_factor[day] = float(val)
+            except Exception:
+                pass
+
+    labels = sorted(day_score.keys())
+    scores = [day_score.get(d, 0) for d in labels]
+    factor_values = [day_factor.get(d) for d in labels]
+
+    # Pearson r between scores and factor_values (skip None)
+    r_val = None
+    pairs = [(s, f) for s, f in zip(scores, factor_values) if f is not None]
+    if len(pairs) >= 3:
+        xs, ys = [p[0] for p in pairs], [p[1] for p in pairs]
+        n = len(xs)
+        mx, my = sum(xs)/n, sum(ys)/n
+        num = sum((x-mx)*(y-my) for x,y in zip(xs,ys))
+        dx = sum((x-mx)**2 for x in xs)**0.5
+        dy = sum((y-my)**2 for y in ys)**0.5
+        if dx > 0 and dy > 0:
+            r_val = round(num / (dx * dy), 3)
+
+    return JsonResponse({
+        "labels": labels,
+        "scores": scores,
+        "factor_values": factor_values,
+        "factor_label": factor_label,
+        "r": r_val,
+    })
+
+
+@login_required
+def api_trend_wellbeing(request):
+    """GET /api/trend-wellbeing/?days=30
+    Returns: {"labels": [...], "stress": [...], "exercise": [...], "sleep": [...], "hydration": [...], "headache": [...]}
+    null for days with no data.
+    """
+    from django.http import JsonResponse
+    from datetime import datetime, timedelta, timezone
+
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        return JsonResponse({"labels": [], "stress": [], "exercise": [], "sleep": [], "hydration": [], "headache": []})
+
+    try:
+        days = max(1, min(365, int(request.GET.get("days", 30))))
+    except (ValueError, TypeError):
+        days = 30
+
+    wb_rows = wellbeing_history(settings.WEATHERGUARD_DB, prof.phone_e164, days=days)
+
+    # Build day-keyed lookup
+    wb_map: Dict[str, Dict] = {}
+    for r in wb_rows:
+        wb_map[r["day"]] = r
+
+    # Generate all days in range
+    now = datetime.now(tz=timezone.utc).date()
+    start = now - timedelta(days=days - 1)
+    labels = []
+    d = start
+    while d <= now:
+        labels.append(d.isoformat())
+        d = d + timedelta(days=1)
+
+    def _get(day, key):
+        return wb_map[day].get(key) if day in wb_map else None
+
+    return JsonResponse({
+        "labels": labels,
+        "stress":    [_get(d, "stress_1_10") for d in labels],
+        "exercise":  [_get(d, "exercise_1_10") for d in labels],
+        "sleep":     [_get(d, "sleep_quality_1_10") for d in labels],
+        "hydration": [_get(d, "hydration_1_10") for d in labels],
+        "headache":  [_get(d, "headache_1_10") for d in labels],
+    })
+
+
+@login_required
+def api_trend_symptoms(request):
+    """GET /api/trend-symptoms/?days=30
+    Returns: {"dates": ["2026-03-05", ...], "severities": [7, ...]}
+    """
+    from django.http import JsonResponse
+
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        return JsonResponse({"dates": [], "severities": []})
+
+    try:
+        days = max(1, min(365, int(request.GET.get("days", 30))))
+    except (ValueError, TypeError):
+        days = 30
+
+    history = symptom_log_history(settings.WEATHERGUARD_DB, prof.phone_e164, days=days)
+
+    dates = []
+    severities = []
+    for entry in reversed(history):  # oldest first
+        ts = entry.get("timestamp", "")
+        day = ts[:10] if ts else ""
+        if day:
+            dates.append(day)
+            severities.append(entry.get("severity"))
+
+    return JsonResponse({"dates": dates, "severities": severities})
