@@ -1,160 +1,138 @@
 #!/usr/bin/env python3
-"""Generate PWA icons for Zdrowa portal."""
-import struct, zlib, math, os
+"""Generate PWA icons for Health Guard portal — shield + cross logo."""
+import os
+import math
 
-# ── PNG helpers ──────────────────────────────────────────────────────────────
+try:
+    from PIL import Image, ImageDraw
+except ImportError:
+    raise SystemExit("Pillow required: pip install Pillow")
 
-def _chunk(tag: bytes, data: bytes) -> bytes:
-    c = struct.pack('>I', len(data)) + tag + data
-    return c + struct.pack('>I', zlib.crc32(tag + data) & 0xFFFFFFFF)
 
-def make_png(width: int, height: int, rows: list) -> bytes:
-    """rows: list of (width * [(r,g,b,a), ...])"""
-    sig = b'\x89PNG\r\n\x1a\n'
-    ihdr = _chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
-    raw = bytearray()
-    for row in rows:
-        raw.append(0)
-        for r, g, b, a in row:
-            raw += bytes([r, g, b, a])
-    idat = _chunk(b'IDAT', zlib.compress(bytes(raw), 9))
-    iend = _chunk(b'IEND', b'')
-    return sig + ihdr + idat + iend
+def bezier_pts(p0, p1, p2, steps=14):
+    """Quadratic Bezier approximated as line segments (normalized 0-1 coords)."""
+    pts = []
+    for i in range(steps + 1):
+        t = i / steps
+        x = (1 - t)**2 * p0[0] + 2 * (1 - t) * t * p1[0] + t**2 * p2[0]
+        y = (1 - t)**2 * p0[1] + 2 * (1 - t) * t * p1[1] + t**2 * p2[1]
+        pts.append((x, y))
+    return pts
 
-# ── Drawing helpers ───────────────────────────────────────────────────────────
 
-BG    = (8,   15,  29,  255)   # #080f1d  dark navy
-BLUE  = (79,  143, 255, 255)   # #4f8fff  accent
-WHITE = (255, 255, 255, 255)
+def shield_polygon(size):
+    """Return list of (x, y) pixel coords for a heraldic shield shape."""
+    def scale(pts):
+        return [(x * size, y * size) for x, y in pts]
 
-def lerp_color(c1, c2, t):
-    return tuple(int(c1[i] + (c2[i]-c1[i])*t) for i in range(4))
+    pts = []
+    # Top-left rounded corner
+    pts += bezier_pts((0.18, 0.063), (0.095, 0.063), (0.095, 0.133), steps=7)
+    # Left side straight
+    pts.append((0.095, 0.590))
+    # Bottom-left curve to point
+    pts += bezier_pts((0.095, 0.590), (0.095, 0.840), (0.500, 0.963), steps=18)
+    # Bottom-right curve from point
+    pts += bezier_pts((0.500, 0.963), (0.905, 0.840), (0.905, 0.590), steps=18)
+    # Right side straight
+    pts.append((0.905, 0.133))
+    # Top-right rounded corner
+    pts += bezier_pts((0.905, 0.133), (0.905, 0.063), (0.820, 0.063), steps=7)
 
-def make_icon(size: int) -> bytes:
-    px = [BG] * (size * size)
+    return scale(pts)
 
-    cx = cy = size / 2.0
-    outer_r = size * 0.42
-    inner_r  = size * 0.30
 
-    # ── Radial gradient circle (dark→blue) ────────────────────────────────
+def make_icon(size):
+    img = Image.new('RGB', (size, size), (8, 15, 29))   # dark navy bg
+    draw = ImageDraw.Draw(img)
+
+    poly = shield_polygon(size)
+
+    # ── Shield fill: vertical gradient (light green → dark green) ──────────
+    # Draw horizontal scan lines over the bounding box with interpolated color
+    top_col  = (30, 160, 82)   # #1ea052
+    bot_col  = (18,  83, 45)   # #12532d
+    bbox_top    = min(y for _, y in poly)
+    bbox_bottom = max(y for _, y in poly)
+    span = max(1, bbox_bottom - bbox_top)
+
+    # Create a mask by drawing the polygon, then colorize row by row
+    mask = Image.new('L', (size, size), 0)
+    ImageDraw.Draw(mask).polygon(poly, fill=255)
+
+    # Build gradient layer
+    grad = Image.new('RGB', (size, size), (0, 0, 0))
+    grad_draw = ImageDraw.Draw(grad)
     for y in range(size):
-        for x in range(size):
-            dx, dy = x - cx, y - cy
-            dist = math.sqrt(dx*dx + dy*dy)
-            if dist <= outer_r:
-                t = max(0.0, 1.0 - dist / outer_r)
-                col = lerp_color((30, 50, 100, 255), BLUE, t * 0.85)
-                # soft anti-alias at edge
-                if dist > outer_r - 2:
-                    a = int(255 * (outer_r - dist) / 2)
-                    col = (col[0], col[1], col[2], a)
-                px[y*size + x] = col
+        t = max(0.0, min(1.0, (y - bbox_top) / span))
+        r = int(top_col[0] + (bot_col[0] - top_col[0]) * t)
+        g = int(top_col[1] + (bot_col[1] - top_col[1]) * t)
+        b = int(top_col[2] + (bot_col[2] - top_col[2]) * t)
+        grad_draw.line([(0, y), (size, y)], fill=(r, g, b))
 
-    # ── Bold "Z" letter ────────────────────────────────────────────────────
-    def set_rect(x0, y0, x1, y1, color=WHITE):
-        for yy in range(max(0,y0), min(size,y1)):
-            for xx in range(max(0,x0), min(size,x1)):
-                px[yy*size + xx] = color
+    img.paste(grad, mask=mask)
 
-    # Z proportions relative to size
-    zw    = int(size * 0.32)   # total width
-    zh    = int(size * 0.34)   # total height
-    thick = max(3, int(size * 0.065))  # bar thickness
+    # ── Subtle top highlight ────────────────────────────────────────────────
+    hl_poly = []
+    hl_poly += bezier_pts((0.18, 0.063), (0.095, 0.063), (0.095, 0.133), steps=7)
+    hl_poly.append((0.095, 0.430))
+    hl_poly += bezier_pts((0.095, 0.430), (0.300, 0.390), (0.500, 0.385), steps=8)
+    hl_poly += bezier_pts((0.500, 0.385), (0.700, 0.390), (0.905, 0.430), steps=8)
+    hl_poly.append((0.905, 0.133))
+    hl_poly += bezier_pts((0.905, 0.133), (0.905, 0.063), (0.820, 0.063), steps=7)
+    hl_poly_px = [(x * size, y * size) for x, y in hl_poly]
 
-    lx = int(cx) - zw//2
-    rx = lx + zw
-    ty = int(cy) - zh//2
-    by = ty + zh
+    hl = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    ImageDraw.Draw(hl).polygon(hl_poly_px, fill=(255, 255, 255, 22))
+    img.paste(Image.new('RGB', (size, size), (255, 255, 255)),
+              mask=hl.split()[3])
 
-    # top bar
-    set_rect(lx, ty, rx, ty + thick)
-    # bottom bar
-    set_rect(lx, by - thick, rx, by)
+    # ── Shield border ───────────────────────────────────────────────────────
+    border_lw = max(2, int(size * 0.014))
+    draw.line(poly + [poly[0]], fill=(255, 255, 255, 50), width=border_lw)
 
-    # diagonal: staircase from top-right to bottom-left
-    diag_h = zh - 2*thick
-    steps  = max(6, zw // thick)
-    for i in range(steps):
-        seg_y0 = ty + thick + int(i     * diag_h / steps)
-        seg_y1 = ty + thick + int((i+1) * diag_h / steps) + 1
-        seg_x1 = rx - int(i       * zw / steps)
-        seg_x0 = rx - int((i+1)   * zw / steps) - thick
-        set_rect(seg_x0, seg_y0, seg_x1, seg_y1)
+    # ── White cross ─────────────────────────────────────────────────────────
+    cx = size * 0.500
+    cy = size * 0.500      # cross center (vertically centered in shield body)
+    aw = size * 0.120      # arm width
+    al = size * 0.185      # arm half-length
+    r  = max(2, int(size * 0.018))  # corner radius (approximate with slight inset)
 
-    rows = [px[y*size:(y+1)*size] for y in range(size)]
-    return make_png(size, size, rows)
+    vx0, vy0 = cx - aw / 2, cy - al
+    vx1, vy1 = cx + aw / 2, cy + al
+    hx0, hy0 = cx - al,     cy - aw / 2
+    hx1, hy1 = cx + al,     cy + aw / 2
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+    draw.rectangle([vx0, vy0, vx1, vy1], fill=(255, 255, 255))
+    draw.rectangle([hx0, hy0, hx1, hy1], fill=(255, 255, 255))
 
-def make_splash(width: int, height: int) -> bytes:
-    """Splash screen: dark background with centered icon."""
-    BG = (8, 15, 29, 255)
-    px = [BG] * (width * height)
+    return img
 
-    # Draw a centered scaled icon in the middle
+
+def make_splash(width, height):
+    """Splash screen: dark navy background with centered shield icon."""
+    img = Image.new('RGB', (width, height), (8, 15, 29))
     icon_size = min(width, height) // 4
+    icon = make_icon(icon_size)
     ox = (width  - icon_size) // 2
     oy = (height - icon_size) // 2
-
-    cx = width  / 2.0
-    cy = height / 2.0
-    outer_r = icon_size * 0.42
-
-    for y in range(oy, oy + icon_size):
-        for x in range(ox, ox + icon_size):
-            dx, dy = x - cx, y - cy
-            dist = math.sqrt(dx*dx + dy*dy)
-            if dist <= outer_r:
-                t = max(0.0, 1.0 - dist / outer_r)
-                col = lerp_color((30, 50, 100, 255), BLUE, t * 0.85)
-                if dist > outer_r - 2:
-                    a = int(255 * (outer_r - dist) / 2)
-                    col = (col[0], col[1], col[2], a)
-                px[y*width + x] = col
-
-    # Z letter scaled to icon area
-    zw    = int(icon_size * 0.32)
-    zh    = int(icon_size * 0.34)
-    thick = max(2, int(icon_size * 0.065))
-    lx = int(cx) - zw//2
-    rx = lx + zw
-    ty = int(cy) - zh//2
-    by = ty + zh
-
-    def set_rect(x0, y0, x1, y1):
-        for yy in range(max(0,y0), min(height,y1)):
-            for xx in range(max(0,x0), min(width,x1)):
-                px[yy*width + xx] = WHITE
-
-    set_rect(lx, ty, rx, ty+thick)
-    set_rect(lx, by-thick, rx, by)
-    diag_h = zh - 2*thick
-    steps  = max(6, zw // thick)
-    for i in range(steps):
-        seg_y0 = ty + thick + int(i     * diag_h / steps)
-        seg_y1 = ty + thick + int((i+1) * diag_h / steps) + 1
-        seg_x1 = rx - int(i       * zw / steps)
-        seg_x0 = rx - int((i+1)   * zw / steps) - thick
-        set_rect(seg_x0, seg_y0, seg_x1, seg_y1)
-
-    rows = [px[y*width:(y+1)*width] for y in range(height)]
-    return make_png(width, height, rows)
+    img.paste(icon, (ox, oy))
+    return img
 
 
 def main():
-    out_dir = os.path.join(os.path.dirname(__file__),
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "app", "portal", "static", "portal", "icons")
     os.makedirs(out_dir, exist_ok=True)
 
-    for size, name in [(192, "icon-192.png"), (512, "icon-512.png"), (180, "apple-touch-icon.png")]:
-        data = make_icon(size)
+    # PWA icons
+    for size, name in [(512, "icon-512.png"), (192, "icon-192.png"), (180, "apple-touch-icon.png")]:
+        icon = make_icon(size)
         path = os.path.join(out_dir, name)
-        with open(path, "wb") as f:
-            f.write(data)
-        print(f"  ✓ {name}  ({size}×{size}, {len(data):,} bytes)")
+        icon.save(path, "PNG", optimize=True)
+        print(f"  ✓ {name}  ({size}×{size})")
 
-    # Splash screens (use small size to keep files reasonable — iOS scales up)
+    # Splash screens
     for (w, h), name in [
         ((1290, 2796), "splash-1290x2796.png"),
         ((1179, 2556), "splash-1179x2556.png"),
@@ -163,11 +141,11 @@ def main():
         (( 828, 1792), "splash-828x1792.png"),
         (( 750, 1334), "splash-750x1334.png"),
     ]:
-        data = make_splash(w, h)
+        splash = make_splash(w, h)
         path = os.path.join(out_dir, name)
-        with open(path, "wb") as f:
-            f.write(data)
-        print(f"  ✓ {name}  ({w}×{h}, {len(data):,} bytes)")
+        splash.save(path, "PNG", optimize=True)
+        print(f"  ✓ {name}  ({w}×{h})")
+
 
 if __name__ == "__main__":
     main()

@@ -772,9 +772,9 @@ def pwa_manifest(request: HttpRequest) -> HttpResponse:
         "theme_color": "#080f1d",
         "orientation": "portrait-primary",
         "icons": [
-            {"src": f"{icons_url}/icon-192.png?v=3", "sizes": "192x192", "type": "image/png"},
-            {"src": f"{icons_url}/icon-512.png?v=3", "sizes": "512x512", "type": "image/png"},
-            {"src": f"{icons_url}/icon-512.png?v=3", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": f"{icons_url}/icon-192.png?v=4", "sizes": "192x192", "type": "image/png"},
+            {"src": f"{icons_url}/icon-512.png?v=4", "sizes": "512x512", "type": "image/png"},
+            {"src": f"{icons_url}/icon-512.png?v=4", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
     }
     return HttpResponse(

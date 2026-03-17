@@ -14,9 +14,8 @@
   color: var(--text); margin: 0 0 14px; line-height: 1;
 }
 .login-brand-icon {
-  width: 56px; height: 56px; border-radius: 14px;
   margin: 0 auto; display: block;
-  box-shadow: 0 0 28px rgba(34,197,94,.35);
+  filter: drop-shadow(0 0 18px rgba(34,197,94,.45));
 }
 .login-card { width: 100%; max-width: 380px; }
 .login-submit {
@@ -37,8 +36,19 @@
 <div class="login-wrap">
   <div class="login-brand">
     <p class="login-brand-name">Health Guard</p>
-    <img src="/static/portal/icons/apple-touch-icon.png?v=3"
-         alt="Health Guard icon" class="login-brand-icon">
+    <svg class="login-brand-icon" width="64" height="77" viewBox="0 0 100 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Health Guard">
+      <defs>
+        <linearGradient id="sg-login" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#22a052"/>
+          <stop offset="100%" stop-color="#14532d"/>
+        </linearGradient>
+      </defs>
+      <path d="M 18,8 Q 10,8 10,16 L 10,70 Q 10,94 50,114 Q 90,94 90,70 L 90,16 Q 90,8 82,8 Z" fill="url(#sg-login)"/>
+      <path d="M 18,8 Q 10,8 10,16 L 10,50 Q 34,44 50,44 Q 66,44 90,50 L 90,16 Q 90,8 82,8 Z" fill="rgba(255,255,255,.1)"/>
+      <path d="M 18,8 Q 10,8 10,16 L 10,70 Q 10,94 50,114 Q 90,94 90,70 L 90,16 Q 90,8 82,8 Z" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>
+      <rect x="43" y="38" width="14" height="38" rx="2" fill="white"/>
+      <rect x="31" y="50" width="38" height="14" rx="2" fill="white"/>
+    </svg>
   </div>
 
   <div class="card login-card">

@@ -14,17 +14,17 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Zdrowa">
+  <meta name="apple-mobile-web-app-title" content="Health Guard">
   <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/static/portal/icons/apple-touch-icon.png?v=3">
+  <link rel="apple-touch-icon" href="/static/portal/icons/apple-touch-icon.png?v=4">
   {# iPhone splash screens (portrait) #}
-  <link rel="apple-touch-startup-image" media="(device-width:430px)and(device-height:932px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1290x2796.png?v=3">
-  <link rel="apple-touch-startup-image" media="(device-width:393px)and(device-height:852px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1179x2556.png?v=3">
-  <link rel="apple-touch-startup-image" media="(device-width:390px)and(device-height:844px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1170x2532.png?v=3">
-  <link rel="apple-touch-startup-image" media="(device-width:375px)and(device-height:812px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1125x2436.png?v=3">
-  <link rel="apple-touch-startup-image" media="(device-width:414px)and(device-height:896px)and(-webkit-device-pixel-ratio:2)" href="/static/portal/icons/splash-828x1792.png?v=3">
-  <link rel="apple-touch-startup-image" media="(device-width:375px)and(device-height:667px)and(-webkit-device-pixel-ratio:2)" href="/static/portal/icons/splash-750x1334.png?v=3">
-  <title>{% block title %}zdrowa.pracunia.pl{% endblock %}</title>
+  <link rel="apple-touch-startup-image" media="(device-width:430px)and(device-height:932px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1290x2796.png?v=4">
+  <link rel="apple-touch-startup-image" media="(device-width:393px)and(device-height:852px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1179x2556.png?v=4">
+  <link rel="apple-touch-startup-image" media="(device-width:390px)and(device-height:844px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1170x2532.png?v=4">
+  <link rel="apple-touch-startup-image" media="(device-width:375px)and(device-height:812px)and(-webkit-device-pixel-ratio:3)" href="/static/portal/icons/splash-1125x2436.png?v=4">
+  <link rel="apple-touch-startup-image" media="(device-width:414px)and(device-height:896px)and(-webkit-device-pixel-ratio:2)" href="/static/portal/icons/splash-828x1792.png?v=4">
+  <link rel="apple-touch-startup-image" media="(device-width:375px)and(device-height:667px)and(-webkit-device-pixel-ratio:2)" href="/static/portal/icons/splash-750x1334.png?v=4">
+  <title>{% block title %}Health Guard{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -236,17 +236,7 @@
       color: var(--text); white-space: nowrap; flex-shrink: 0;
       display: flex; align-items: center; gap: 6px;
     }
-    .brand-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent) 0%, var(--green) 100%);
-      box-shadow: 0 0 10px var(--accent-glow);
-      flex-shrink: 0;
-      animation: dot-pulse 3s ease-in-out infinite;
-    }
-    @keyframes dot-pulse {
-      0%, 100% { box-shadow: 0 0 10px var(--accent-glow); }
-      50%       { box-shadow: 0 0 20px var(--accent-glow), 0 0 32px rgba(16,217,160,.25); }
-    }
+    .brand-shield { flex-shrink: 0; display: block; }
     .nav {
       display: flex; align-items: center; gap: 1px; flex: 1;
       overflow-x: auto; scrollbar-width: none;
@@ -745,7 +735,12 @@
 
   <header class="top">
     <a class="brand" href="/dashboard/">
-      <span class="brand-dot"></span>zdrowa.pracunia.pl
+      <svg class="brand-shield" width="20" height="24" viewBox="0 0 100 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M 18,8 Q 10,8 10,16 L 10,70 Q 10,94 50,114 Q 90,94 90,70 L 90,16 Q 90,8 82,8 Z" fill="#166534"/>
+        <rect x="43" y="38" width="14" height="38" rx="2" fill="white"/>
+        <rect x="31" y="50" width="38" height="14" rx="2" fill="white"/>
+      </svg>
+      Health Guard
     </a>
     <button class="nav-toggle"
             aria-label="Otwórz menu"
