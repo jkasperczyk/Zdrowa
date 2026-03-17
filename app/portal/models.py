@@ -25,6 +25,9 @@ class UserProfile(models.Model):
     cycle_length_days = models.PositiveSmallIntegerField(null=True, blank=True, help_text="20-45 (tylko dla kobiet)")
     cycle_start_date = models.DateField(null=True, blank=True, help_text="Data początku ostatniego cyklu (YYYY-MM-DD)")
 
+    # ML personalized risk prediction
+    use_ml_prediction = models.BooleanField(default=False, help_text="Użyj modelu ML do personalizacji predykcji ryzyka")
+
     # Password policy
     must_change_password = models.BooleanField(default=False)
     has_seen_onboarding = models.BooleanField(default=False)

@@ -28,6 +28,7 @@ from .wg_sources import (
     save_weekly_report,
     correlation_data,
     generate_symptom_feedback,
+    get_ml_status,
 )
 
 ALERT_PROFILES = ["migraine", "allergy", "heart"]
@@ -177,6 +178,7 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             prof.cycle_length_days = None
             prof.cycle_start_date = None
 
+        prof.use_ml_prediction = request.POST.get("use_ml_prediction") == "1"
         prof.save()
 
         if prof.phone_e164:
@@ -189,6 +191,7 @@ def settings_view(request: HttpRequest) -> HttpResponse:
                     threshold=prof.alert_threshold,
                     quiet_hours=prof.quiet_hours or None,
                     enabled=request.user.is_active,
+                    use_ml=prof.use_ml_prediction,
                 )
             except Exception:
                 pass
@@ -196,7 +199,19 @@ def settings_view(request: HttpRequest) -> HttpResponse:
         messages.success(request, "Zapisano ustawienia.")
         return redirect("settings")
 
-    return render(request, "portal/settings.html", {"prof": prof, "genders": genders, "alert_types": alert_types})
+    ml_status = {}
+    if prof.phone_e164 and prof.enabled_alerts:
+        try:
+            ml_status = get_ml_status(settings.WEATHERGUARD_DB, prof.phone_e164, prof.enabled_alerts)
+        except Exception:
+            pass
+
+    return render(request, "portal/settings.html", {
+        "prof": prof,
+        "genders": genders,
+        "alert_types": alert_types,
+        "ml_status": ml_status,
+    })
 
 
 @login_required

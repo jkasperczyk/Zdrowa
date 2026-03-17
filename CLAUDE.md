@@ -80,14 +80,14 @@ User browser (PWA) → Django views → portal DB (SQLite, owns users/profiles)
 ### Key Modules
 
 - **`portal/models.py`** — Two models:
-  - `UserProfile` (one-to-one with Django `User`): phone (E.164), gender, alert preferences (migraine/allergy/heart), menstrual cycle data, force-password-change flag.
+  - `UserProfile` (one-to-one with Django `User`): phone (E.164), gender, alert preferences (migraine/allergy/heart), menstrual cycle data, force-password-change flag, `use_ml_prediction` (opt-in ML scoring).
   - `DailyWellbeing`: daily stress/exercise level per user (indexed by user + day).
 
 - **`portal/views.py`** — Auth views (login, logout, password change), dashboard, settings, staff-only admin tools, PWA service worker, push subscription endpoint.
 
 - **`portal/views_wg.py`** — Views reading from WeatherGuard integration layer: sensor data, alerts, trends, symptom log, wellbeing, weekly reports + correlation.
 
-- **`portal/wg_sources.py`** — Data access layer for WeatherGuard SQLite (`feedback.db`). Direct SQLite3 queries (not Django ORM). Includes push subscription management, alerts queue processing, correlation computation, and tip generation.
+- **`portal/wg_sources.py`** — Data access layer for WeatherGuard SQLite (`feedback.db`). Direct SQLite3 queries (not Django ORM). Includes push subscription management, alerts queue processing, correlation computation, tip generation, AI caching (ai_cache table), and ML model status queries.
 
 - **`portal/context_processors.py`** — Injects `vapid_public_key` and `unread_count` (unsent alerts_queue entries) into every authenticated template.
 
@@ -104,7 +104,7 @@ User browser (PWA) → Django views → portal DB (SQLite, owns users/profiles)
 /trends/                 → list trend charts
 /trends/file/<fname>     → serve trend PNG (phone-number-validated)
 /raporty/                → weekly AI reports + correlation chart
-/settings/               → edit profile (name, phone, gender, alert types, cycle)
+/settings/               → edit profile (name, phone, gender, alert types, cycle, ML opt-in)
 /wellbeing/              → daily wellbeing entry
 /symptom_log/            → symptom log (records feats_json for ML)
 /export/                 → CSV export

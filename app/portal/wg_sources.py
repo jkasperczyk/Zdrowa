@@ -240,6 +240,7 @@ def write_wg_user(
     threshold=None,
     quiet_hours=None,
     enabled: bool = True,
+    use_ml: bool = False,
 ) -> bool:
     """Upsert a user's WeatherGuard runner config into the wg_users table in feedback.db.
     Creates the table if it doesn't exist yet (Health_Guard may not have run yet)."""
@@ -258,21 +259,27 @@ def write_wg_user(
                     threshold     INTEGER,
                     quiet_hours   TEXT,
                     enabled       INTEGER NOT NULL DEFAULT 1,
-                    updated_at    TEXT NOT NULL DEFAULT ''
+                    updated_at    TEXT NOT NULL DEFAULT '',
+                    use_ml        INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
+            # Additive migration: add use_ml column if not present
+            existing_cols = {r[1] for r in c.execute("PRAGMA table_info(wg_users)").fetchall()}
+            if "use_ml" not in existing_cols:
+                c.execute("ALTER TABLE wg_users ADD COLUMN use_ml INTEGER NOT NULL DEFAULT 0")
             c.execute(
                 """
-                INSERT INTO wg_users(phone, profiles_json, location, threshold, quiet_hours, enabled, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO wg_users(phone, profiles_json, location, threshold, quiet_hours, enabled, updated_at, use_ml)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(phone) DO UPDATE SET
                     profiles_json = excluded.profiles_json,
                     location      = excluded.location,
                     threshold     = excluded.threshold,
                     quiet_hours   = excluded.quiet_hours,
                     enabled       = excluded.enabled,
-                    updated_at    = excluded.updated_at
+                    updated_at    = excluded.updated_at,
+                    use_ml        = excluded.use_ml
                 """,
                 (
                     phone,
@@ -282,6 +289,7 @@ def write_wg_user(
                     quiet_hours or None,
                     1 if enabled else 0,
                     now,
+                    1 if use_ml else 0,
                 ),
             )
             c.commit()
@@ -290,6 +298,53 @@ def write_wg_user(
         return True
     except Exception:
         return False
+
+
+def get_ml_status(db_path: str, phone: str, profiles: list) -> Dict[str, Any]:
+    """Return ML model status for a user: sample count and model info per profile."""
+    result: Dict[str, Any] = {
+        "sample_counts": {},
+        "models": {},
+        "min_samples": 30,
+    }
+    if not db_path or not os.path.exists(db_path):
+        return result
+    try:
+        c = sqlite3.connect(db_path)
+        try:
+            # Count positive samples (symptom_log) per profile
+            if _table_exists(c, "symptom_log"):
+                for profile in profiles:
+                    row = c.execute(
+                        "SELECT COUNT(*) FROM symptom_log WHERE phone=? AND profile=? AND feats_json IS NOT NULL",
+                        (phone, profile),
+                    ).fetchone()
+                    result["sample_counts"][profile] = row[0] if row else 0
+            # Get model info from ml_models
+            if _table_exists(c, "ml_models"):
+                for profile in profiles:
+                    row = c.execute(
+                        "SELECT accuracy, f1, feature_importances_json, trained_at, sample_count FROM ml_models WHERE phone=? AND profile=?",
+                        (phone, profile),
+                    ).fetchone()
+                    if row:
+                        fi = {}
+                        try:
+                            fi = json.loads(row[2]) if row[2] else {}
+                        except Exception:
+                            pass
+                        result["models"][profile] = {
+                            "accuracy": row[0],
+                            "f1": row[1],
+                            "feature_importances": fi,
+                            "trained_at": row[3],
+                            "sample_count": row[4],
+                        }
+        finally:
+            c.close()
+    except Exception:
+        pass
+    return result
 
 
 def write_wellbeing(
@@ -372,6 +427,7 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
         has_feats = "feats_json" in cols
         has_label = "label" in cols
         has_base_score = "base_score" in cols
+        has_ml_score = "ml_score" in cols
 
         scores: Dict[str, Any] = {}
         newest_ts = 0
@@ -382,6 +438,8 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
             sel = ["ts", "score", "threshold"]
             if has_base_score:
                 sel.append("base_score")
+            if has_ml_score:
+                sel.append("ml_score")
             if has_label:
                 sel.append("label")
             sel.append("reasons_json")
@@ -459,9 +517,12 @@ def dashboard_summary(db_path: str, phone: str, profiles: List[str]) -> Dict[str
             except Exception:
                 trend = "stable"
 
+            ml_score = d.get("ml_score") if has_ml_score else None
+
             scores[profile] = {
                 "score": score,
                 "base_score": base_score_val,
+                "ml_score": int(ml_score) if ml_score is not None else None,
                 "modifier_pct": modifier_pct,
                 "modifier_str": modifier_str,
                 "has_personal_data": has_personal_data,

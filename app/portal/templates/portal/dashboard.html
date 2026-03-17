@@ -87,6 +87,13 @@
             {% endif %}
           </p>
 
+          {# ML score breakdown (shown when ML is active) #}
+          {% if s.ml_score is not None %}
+            <p class="base-score-note" style="margin-top:4px;color:var(--accent)">
+              🧠 Klasyczna: {{ s.base_score }} | ML: {{ s.ml_score }}% | Końcowa: {{ s.score }}
+            </p>
+          {% endif %}
+
           {% if s.reasons %}
             <ul class="reason-list" style="margin-top:10px;text-align:left">
               {% for r in s.reasons %}<li>{{ r }}</li>{% endfor %}

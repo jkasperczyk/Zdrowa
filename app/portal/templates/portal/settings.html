@@ -181,6 +181,60 @@
       </div>
     </div>
 
+    {# ── 🧠 Predykcja AI/ML ── #}
+    <div class="card settings-card">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">🧠</span>
+        <div>
+          <div class="settings-section-title">Predykcja AI/ML</div>
+          <div class="settings-section-sub">Personalizacja ryzyka na podstawie Twoich indywidualnych danych</div>
+        </div>
+      </div>
+      <hr class="settings-divider">
+      <div style="margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;width:fit-content">
+          <input type="hidden" name="use_ml_prediction" value="0">
+          <input type="checkbox" name="use_ml_prediction" value="1" id="id_use_ml"
+                 {% if prof.use_ml_prediction %}checked{% endif %}
+                 style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+          <span style="font-weight:600;font-size:.95rem">Włącz spersonalizowany model ML</span>
+        </label>
+        <p class="help" style="margin-top:6px">
+          Model uczy się na Twoich objawach i danych środowiskowych. Wynik końcowy to 60% ocena klasyczna + 40% predykcja ML.
+          Wymaga minimum 30 zarejestrowanych objawów.
+        </p>
+      </div>
+      {% if ml_status %}
+        {% for profile in prof.enabled_alerts %}
+          <div style="margin-bottom:10px;padding:10px 14px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border)">
+            <div style="font-weight:600;font-size:.875rem;margin-bottom:6px">{{ profile|profile_label }}</div>
+            {% with count=ml_status.sample_counts|get_item:profile model=ml_status.models|get_item:profile %}
+              <div class="small" style="color:var(--text-2)">
+                Zebrano próbek: <b>{{ count|default:0 }} / {{ ml_status.min_samples }}</b>
+                {% if count >= ml_status.min_samples %}
+                  <span style="color:var(--green)"> ✓ wystarczające do treningu</span>
+                {% else %}
+                  <span style="color:var(--muted)"> (potrzeba min. {{ ml_status.min_samples }})</span>
+                {% endif %}
+              </div>
+              {% if model %}
+                <div class="small" style="color:var(--muted);margin-top:4px">
+                  Model: dokładność <b>{{ model.accuracy|floatformat:0 }}%</b>,
+                  F1 <b>{{ model.f1|floatformat:2 }}</b>,
+                  próbek <b>{{ model.sample_count }}</b>,
+                  wytrenowany {{ model.trained_at|slice:":10" }}
+                </div>
+              {% else %}
+                <div class="small" style="color:var(--muted);margin-top:4px">Model jeszcze nie wytrenowany.</div>
+              {% endif %}
+            {% endwith %}
+          </div>
+        {% empty %}
+          <p class="small muted">Brak aktywnych profili alertów.</p>
+        {% endfor %}
+      {% endif %}
+    </div>
+
     {# ── ⚠ Strefa niebezpieczna ── #}
     <div class="card settings-card" style="border-color:rgba(220,38,38,.3);background:linear-gradient(145deg,rgba(220,38,38,.04) 0%,transparent 60%);margin-top:8px">
       <div class="settings-header">
