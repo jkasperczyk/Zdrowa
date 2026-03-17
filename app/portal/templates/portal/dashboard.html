@@ -1,13 +1,15 @@
 {% extends "portal/base.html" %}
+{% load portal_extras %}
 {% block extra_css %}
 .trend-badge { display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:.85rem;font-weight:700;margin-left:6px;vertical-align:middle; }
 .trend-up   { background:rgba(239,68,68,.18);color:var(--red); }
 .trend-down { background:rgba(34,197,94,.18);color:var(--green); }
-.trend-stable { background:rgba(148,163,184,.15);color:var(--text-3); }
-.base-score-note { font-size:.75rem;color:var(--text-3);margin-top:4px; }
+.trend-stable { background:rgba(148,163,184,.15);color:var(--muted); }
+.base-score-note { font-size:.75rem;color:var(--muted);margin-top:4px; }
 /* Onboarding modal */
 .onboarding-backdrop { position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:900;display:flex;align-items:center;justify-content:center;padding:16px; }
-.onboarding-modal   { background:var(--card-bg);border:1px solid var(--border);border-radius:16px;max-width:420px;width:100%;padding:28px;box-shadow:0 8px 48px rgba(0,0,0,.5); }
+.onboarding-modal   { background:#0d1829;border:1px solid var(--border);border-radius:16px;max-width:420px;width:100%;padding:28px;box-shadow:0 8px 48px rgba(0,0,0,.5); }
+[data-theme="light"] .onboarding-modal { background:#fff;border-color:rgba(0,0,0,.1);box-shadow:0 8px 48px rgba(0,0,0,.18); }
 .onboarding-modal h2 { margin:0 0 12px;font-size:1.3rem; }
 .onboarding-modal p  { color:var(--text-2);line-height:1.6;margin-bottom:16px; }
 {% endblock %}
@@ -17,12 +19,9 @@
   {# ── Page header ── #}
   <div class="flex-between">
     <div>
-      {% if greeting %}
-        <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.2rem">{{ greeting }}</h1>
-        <p class="muted small" style="margin-bottom:.15rem">Panel zdrowia</p>
-      {% else %}
-        <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Panel zdrowia</h1>
-      {% endif %}
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">
+        {{ greeting|default:"Panel zdrowia" }}
+      </h1>
       {% if summary.last_dt %}
         <p class="muted small">Zaktualizowano: <b style="color:var(--text-2)">{{ summary.last_dt }}</b></p>
       {% elif prof.phone_e164 %}
@@ -45,7 +44,7 @@
             {% if profile == "migraine" %}Ryzyko migreny
             {% elif profile == "allergy" %}Ryzyko alergii
             {% elif profile == "heart" %}Ryzyko sercowe
-            {% else %}{{ profile }}{% endif %}
+            {% else %}{{ profile|profile_label }}{% endif %}
           </div>
 
           {# Circular gauge #}
@@ -288,7 +287,7 @@
     <div class="row-4">
       {% for f in forecast_data %}
         <div class="card env-tile {% if f.forecast_score >= f.threshold %}warn-tile{% endif %}">
-          <div class="card-title">+{{ f.hour_offset }}h — {{ f.profile }}</div>
+          <div class="card-title">+{{ f.hour_offset }}h — {{ f.profile|profile_label }}</div>
           <div class="env-val {% if f.forecast_score >= f.threshold %}warn{% endif %}">{{ f.forecast_score }}</div>
           <div class="env-unit">prognozowane ryzyko / próg {{ f.threshold }}</div>
           {% if f.message %}

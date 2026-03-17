@@ -1,36 +1,94 @@
 {% extends "portal/base.html" %}
+{% load portal_extras %}
+{% block extra_css %}
+/* ── Settings section cards ─────────────────────────────── */
+.settings-card { margin-bottom: 16px; }
+.settings-header {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 0;
+}
+.settings-icon-wrap {
+  width: 44px; height: 44px; border-radius: var(--r-sm); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 1.3rem;
+  background: var(--accent-dim); border: 1px solid rgba(79,143,255,.2);
+}
+[data-theme="light"] .settings-icon-wrap {
+  background: rgba(59,130,246,.1); border-color: rgba(59,130,246,.2);
+}
+.settings-section-title { font-size: .95rem; font-weight: 700; color: var(--text); line-height: 1.2; }
+.settings-section-sub   { font-size: .77rem; color: var(--muted); margin-top: 2px; }
+.settings-divider {
+  border: none; border-top: 1px solid var(--border); margin: 18px 0;
+}
+/* ── Profile pill toggles ───────────────────────────────── */
+.profile-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.profile-pill-cb { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.profile-pill {
+  padding: 9px 22px; border-radius: 999px; cursor: pointer; display: inline-block;
+  border: 1.5px solid var(--border); color: var(--muted);
+  font-size: .875rem; font-weight: 500; user-select: none; -webkit-user-select: none;
+  transition: border-color var(--t), color var(--t), background var(--t), box-shadow var(--t);
+}
+.profile-pill:hover {
+  border-color: var(--accent); color: var(--text-2);
+  background: var(--accent-dim);
+}
+.profile-pill-cb:checked + .profile-pill {
+  background: var(--accent-dim); border-color: var(--accent);
+  color: var(--accent-h); font-weight: 700;
+  box-shadow: 0 0 0 3px rgba(79,143,255,.12);
+}
+[data-theme="light"] .profile-pill-cb:checked + .profile-pill {
+  box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+/* ── Save button ────────────────────────────────────────── */
+.settings-save-wrap {
+  position: sticky; bottom: 0; padding: 14px 0 0;
+  background: transparent; z-index: 10;
+}
+.settings-save-btn {
+  width: 100%; padding: 13px 24px; font-size: .95rem; font-weight: 700;
+}
+@media (min-width: 600px) {
+  .settings-save-btn { width: auto; padding: 11px 40px; }
+}
+{% endblock %}
 {% block content %}
 <div class="stack">
   <div>
     <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Ustawienia</h1>
-    <p class="muted small">Numer telefonu łączy konto z danymi WeatherGuard. Lokalizacja i progi zapisywane są do konfiguracji alertów.</p>
+    <p class="muted small">Personalizuj alerty, lokalizację i dane zdrowotne.</p>
   </div>
 
   <form method="post">
     {% csrf_token %}
 
-    {# ── Profil osobowy ── #}
-    <div class="card" style="margin-bottom:16px">
-      <p class="section-title" style="margin-top:0">Profil osobowy</p>
+    {# ── 👤 Profil osobowy ── #}
+    <div class="card settings-card">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">👤</span>
+        <div>
+          <div class="settings-section-title">Profil osobowy</div>
+          <div class="settings-section-sub">Imię, nazwisko, telefon i płeć</div>
+        </div>
+      </div>
+      <hr class="settings-divider">
       <div class="form-row">
         <div class="field">
           <label for="id_first_name">Imię</label>
-          <input id="id_first_name" name="first_name" value="{{ request.user.first_name }}">
+          <input id="id_first_name" name="first_name" value="{{ request.user.first_name }}" placeholder="np. Anna">
         </div>
         <div class="field">
           <label for="id_last_name">Nazwisko</label>
-          <input id="id_last_name" name="last_name" value="{{ request.user.last_name }}">
+          <input id="id_last_name" name="last_name" value="{{ request.user.last_name }}" placeholder="np. Kowalska">
         </div>
       </div>
-      <div class="form-row">
-        <div class="field">
+      <div class="form-row" style="margin-bottom:0">
+        <div class="field" style="margin-bottom:0">
           <label for="id_phone_e164">Telefon (E.164)</label>
           <input id="id_phone_e164" name="phone_e164" value="{{ prof.phone_e164 }}" placeholder="+48123456789">
           <span class="help">Łączy konto z danymi WeatherGuard i powiadomieniami push.</span>
         </div>
-      </div>
-      <div class="form-row">
-        <div class="field">
+        <div class="field" style="margin-bottom:0">
           <label for="id_gender">Płeć</label>
           <select id="id_gender" name="gender">
             {% for k,v in genders %}
@@ -38,48 +96,76 @@
             {% endfor %}
           </select>
         </div>
-        <div class="field">
-          <label>Typy alertów</label>
-          <select name="enabled_alerts" multiple size="3">
-            {% for a in alert_types %}
-              <option value="{{ a }}" {% if a in prof.enabled_alerts %}selected{% endif %}>{{ a }}</option>
-            {% endfor %}
-          </select>
-          <span class="help">Ctrl / ⌘ aby zaznaczyć wiele.</span>
-        </div>
       </div>
-
     </div>
 
-    {# ── Konfiguracja WeatherGuard ── #}
-    <div class="card" style="margin-bottom:16px">
-      <p class="section-title" style="margin-top:0">Konfiguracja WeatherGuard</p>
-      <div class="form-row">
-        <div class="field">
-          <label for="id_location">Lokalizacja</label>
-          <input id="id_location" name="location" value="{{ prof.location }}" placeholder="np. Zawiercie,PL">
-          <span class="help">Miasto i kod kraju, np. <code>Warszawa,PL</code>.</span>
-        </div>
-        <div class="field">
-          <label for="id_alert_threshold">Próg alertu (1–100)</label>
-          <input id="id_alert_threshold" name="alert_threshold" type="number" min="1" max="100"
-                 value="{{ prof.alert_threshold|default:'' }}" placeholder="puste = domyślny systemu">
-          <span class="help">Minimalne ryzyko do wysłania powiadomienia. Puste = próg z konfiguracji systemu.</span>
+    {# ── 🔔 Konfiguracja alertów ── #}
+    <div class="card settings-card">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">🔔</span>
+        <div>
+          <div class="settings-section-title">Konfiguracja alertów</div>
+          <div class="settings-section-sub">Rodzaj alertów, progi i godziny ciszy</div>
         </div>
       </div>
+      <hr class="settings-divider">
+
+      <div style="margin-bottom:6px">
+        <label style="margin-bottom:10px">Aktywne profile zdrowotne</label>
+        <div class="profile-pills">
+          {% for a in alert_types %}
+            <input type="checkbox" name="enabled_alerts" value="{{ a }}"
+                   id="alert_{{ a }}" {% if a in prof.enabled_alerts %}checked{% endif %}
+                   class="profile-pill-cb">
+            <label for="alert_{{ a }}" class="profile-pill">{{ a|profile_label }}</label>
+          {% endfor %}
+        </div>
+        <span class="help">Wybierz jeden lub więcej profili — każdy stosuje inne czynniki ryzyka.</span>
+      </div>
+
+      <hr class="settings-divider">
       <div class="form-row" style="margin-bottom:0">
         <div class="field" style="margin-bottom:0">
-          <label for="id_quiet_hours">Godziny ciszy (cisza nocna)</label>
+          <label for="id_alert_threshold">Próg alertu (1–100)</label>
+          <input id="id_alert_threshold" name="alert_threshold" type="number" min="1" max="100"
+                 value="{{ prof.alert_threshold|default:'' }}" placeholder="domyślny systemu">
+          <span class="help">Minimalne ryzyko (0–100) do wysłania powiadomienia push. Puste = próg systemowy.</span>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="id_quiet_hours">Cisza nocna</label>
           <input id="id_quiet_hours" name="quiet_hours" value="{{ prof.quiet_hours }}" placeholder="np. 22-7">
           <span class="help">Format <code>HH-HH</code>, np. <code>22-7</code>. Puste = zawsze aktywny.</span>
         </div>
-        <div class="field" style="margin-bottom:0"></div>
       </div>
     </div>
 
-    {# ── Cykl miesięczny (opcjonalne) ── #}
-    <div class="card" id="cycle-section" style="margin-bottom:16px">
-      <p class="section-title" style="margin-top:0">Cykl miesięczny <span class="pill">opcjonalne · tylko dla kobiet</span></p>
+    {# ── 📍 Lokalizacja ── #}
+    <div class="card settings-card">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">📍</span>
+        <div>
+          <div class="settings-section-title">Lokalizacja</div>
+          <div class="settings-section-sub">Miasto dla prognoz pogody i jakości powietrza</div>
+        </div>
+      </div>
+      <hr class="settings-divider">
+      <div class="field" style="margin-bottom:0">
+        <label for="id_location">Miasto i kraj</label>
+        <input id="id_location" name="location" value="{{ prof.location }}" placeholder="np. Warszawa,PL">
+        <span class="help">Format: <code>Miasto,KK</code>, np. <code>Kraków,PL</code> lub <code>Katowice,PL</code>.</span>
+      </div>
+    </div>
+
+    {# ── 🏥 Dane medyczne (tylko dla kobiet) ── #}
+    <div class="card settings-card" id="cycle-section">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">🏥</span>
+        <div>
+          <div class="settings-section-title">Dane medyczne <span class="pill">tylko dla kobiet</span></div>
+          <div class="settings-section-sub">Cykl miesięczny wpływa na dokładność prognozy ryzyka</div>
+        </div>
+      </div>
+      <hr class="settings-divider">
       <div class="form-row" style="margin-bottom:0">
         <div class="field" style="margin-bottom:0">
           <label for="id_cycle_length_days">Długość cyklu (dni)</label>
@@ -88,15 +174,15 @@
                  value="{{ prof.cycle_length_days|default:'' }}" placeholder="np. 28">
         </div>
         <div class="field" style="margin-bottom:0">
-          <label for="id_cycle_start_date">Data początku cyklu (RRRR-MM-DD)</label>
+          <label for="id_cycle_start_date">Ostatni pierwszy dzień cyklu</label>
           <input id="id_cycle_start_date" name="cycle_start_date" type="date"
                  value="{{ prof.cycle_start_date|date:'Y-m-d' }}">
         </div>
       </div>
     </div>
 
-    <div class="actions">
-      <button class="btn" type="submit">Zapisz ustawienia</button>
+    <div class="settings-save-wrap">
+      <button class="btn settings-save-btn" type="submit">Zapisz ustawienia</button>
     </div>
   </form>
 </div>
@@ -104,7 +190,7 @@
 {% block scripts %}
 <script>
 (function() {
-  var genderSel = document.getElementById('id_gender');
+  var genderSel   = document.getElementById('id_gender');
   var cycleSection = document.getElementById('cycle-section');
   function toggleCycle() {
     cycleSection.style.display = genderSel.value === 'female' ? '' : 'none';

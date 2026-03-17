@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% load portal_extras %}
 {% block content %}
 <div class="stack">
   <div class="flex-between">
@@ -17,7 +18,7 @@
           <select name="profile">
             <option value="" {% if not selected_profile %}selected{% endif %}>(wszystkie)</option>
             {% for p in profiles %}
-              <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p }}</option>
+              <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p|profile_label }}</option>
             {% endfor %}
           </select>
         </div>
@@ -43,7 +44,7 @@
               {% for e in events %}
                 <tr>
                   <td class="mono small">{{ e.dt }}</td>
-                  {% if has_profile %}<td><span class="badge blue">{{ e.profile }}</span></td>{% endif %}
+                  {% if has_profile %}<td><span class="badge blue">{{ e.profile|profile_label }}</span></td>{% endif %}
                   <td><b>{{ e.score }}</b></td>
                   {% if has_threshold %}<td class="muted">{{ e.threshold }}</td>{% endif %}
                   {% if has_details %}<td class="small muted">{{ e.details|default:e.message }}</td>{% endif %}

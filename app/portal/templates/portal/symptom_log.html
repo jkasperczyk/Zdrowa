@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% load portal_extras %}
 {% block extra_css %}
 .sev-badge { display:inline-block;padding:2px 10px;border-radius:99px;font-size:.78rem;font-weight:600; }
 .sev-low  { background:rgba(34,197,94,.18);color:var(--green); }
@@ -21,12 +22,7 @@
           <label style="display:block;margin-bottom:6px;font-weight:600">Profil zdrowotny</label>
           <select name="profile" style="max-width:280px">
             {% for p in profiles %}
-              <option value="{{ p }}">
-                {% if p == "migraine" %}Migrena
-                {% elif p == "allergy" %}Alergia
-                {% elif p == "heart" %}Serce / krążenie
-                {% else %}{{ p }}{% endif %}
-              </option>
+              <option value="{{ p }}">{{ p|profile_label }}</option>
             {% endfor %}
           </select>
         </div>
@@ -76,12 +72,7 @@
               {% for e in history %}
                 <tr>
                   <td class="mono small">{{ e.timestamp }}</td>
-                  <td>
-                    {% if e.profile == "migraine" %}Migrena
-                    {% elif e.profile == "allergy" %}Alergia
-                    {% elif e.profile == "heart" %}Serce
-                    {% else %}{{ e.profile }}{% endif %}
-                  </td>
+                  <td>{{ e.profile|profile_label }}</td>
                   <td>
                     <span class="sev-badge {% if e.severity >= 7 %}sev-high{% elif e.severity >= 4 %}sev-mid{% else %}sev-low{% endif %}">
                       {{ e.severity }}/10

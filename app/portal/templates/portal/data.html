@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% load portal_extras %}
 {% block content %}
 <div class="stack">
   <div class="flex-between">
@@ -22,7 +23,7 @@
           <label>Profil (rodzaj danych)</label>
           <select name="profile">
             {% for p in profiles %}
-              <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p }}</option>
+              <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p|profile_label }}</option>
             {% endfor %}
           </select>
         </div>
@@ -31,7 +32,7 @@
 
       <p class="muted small" style="margin-top:12px">
         Telefon: <code>{{ prof.phone_e164 }}</code> &nbsp;|&nbsp;
-        Profil: <span class="badge blue">{{ selected_profile }}</span> &nbsp;|&nbsp;
+        Profil: <span class="badge blue">{{ selected_profile|profile_label }}</span> &nbsp;|&nbsp;
         Okres: <b>7 dni</b>
       </p>
     </div>
