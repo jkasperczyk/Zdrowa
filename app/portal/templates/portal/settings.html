@@ -26,7 +26,7 @@
         <div class="field">
           <label for="id_phone_e164">Telefon (E.164)</label>
           <input id="id_phone_e164" name="phone_e164" value="{{ prof.phone_e164 }}" placeholder="+48123456789">
-          <span class="help">Łączy konto z danymi WeatherGuard i alertami SMS.</span>
+          <span class="help">Łączy konto z danymi WeatherGuard i powiadomieniami push.</span>
         </div>
       </div>
       <div class="form-row">
@@ -49,12 +49,6 @@
         </div>
       </div>
 
-      <div class="field" style="margin-bottom:0">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0">
-          <input type="checkbox" name="sms_enabled" {% if prof.sms_enabled %}checked{% endif %}>
-          Alerty SMS włączone
-        </label>
-      </div>
     </div>
 
     {# ── Konfiguracja WeatherGuard ── #}
@@ -70,7 +64,7 @@
           <label for="id_alert_threshold">Próg alertu (1–100)</label>
           <input id="id_alert_threshold" name="alert_threshold" type="number" min="1" max="100"
                  value="{{ prof.alert_threshold|default:'' }}" placeholder="puste = domyślny systemu">
-          <span class="help">Minimalne ryzyko do wysłania SMS. Puste = próg z konfiguracji systemu.</span>
+          <span class="help">Minimalne ryzyko do wysłania powiadomienia. Puste = próg z konfiguracji systemu.</span>
         </div>
       </div>
       <div class="form-row" style="margin-bottom:0">

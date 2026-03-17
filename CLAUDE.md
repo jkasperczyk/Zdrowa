@@ -19,6 +19,15 @@ cd app && python manage.py collectstatic
 
 # Create superuser
 cd app && python manage.py createsuperuser
+
+# Generate VAPID keys (run once, store in .env)
+cd app && python manage.py generate_vapid_keys
+
+# Generate weekly AI health reports (all users)
+cd app && python manage.py generate_weekly_report
+
+# Generate report for a single user
+cd app && python manage.py generate_weekly_report --phone +48123456789
 ```
 
 No test framework is configured. There is no Makefile.
@@ -33,58 +42,82 @@ The app is configured via environment variables (or a `.env` file loaded via `py
 | `DJANGO_DEBUG` | `False` | Debug mode |
 | `DJANGO_ALLOWED_HOSTS` | `zdrowa.pracunia.pl` | Comma-separated allowed hosts |
 | `ZDROWA_DB_PATH` | `../data/db.sqlite3` | App database path |
-| `WEATHERGUARD_DB` | `/opt/weatherguard/data/feedback.db` | External WeatherGuard SQLite DB (read-only) |
+| `WEATHERGUARD_DB` | `/opt/weatherguard/data/feedback.db` | External WeatherGuard SQLite DB (read/write for push & queue) |
 | `WEATHERGUARD_TRENDS_DIR` | `/opt/weatherguard/public_media/trends` | Directory of trend PNG files |
-| `WEATHERGUARD_SMS_USERS` | `/opt/weatherguard/data/sms_users.json` | SMS subscription JSON file |
+| `VAPID_PRIVATE_KEY` | (required for push) | VAPID private key for Web Push |
+| `VAPID_PUBLIC_KEY` | (required for push) | VAPID public key for Web Push |
+| `VAPID_SUBJECT` | `mailto:admin@zdrowa.pracunia.pl` | VAPID contact |
+| `OPENAI_API_KEY` | (optional) | GPT-4o-mini for weekly reports |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model for reports |
 
 ## Architecture
 
 ### Overview
 
-Django 5 health alert portal ("Zdrowa" = Polish for "Healthy"). The app wraps an external **WeatherGuard** system, providing a user-facing web UI for health alerts driven by weather conditions (migraine, allergy, heart).
+Django 5 health alert portal ("Zdrowa" = Polish for "Healthy"). The app wraps an external **WeatherGuard** system, providing a user-facing web UI for health alerts driven by weather conditions (migraine, allergy, heart). Notifications are delivered via **Web Push / PWA** — no SMS/Twilio.
 
 ### Data Flow
 
 ```
-User browser → Django views → portal DB (SQLite, owns users/profiles)
-                            → WeatherGuard DB (SQLite, read-only: sensor readings, alerts)
-                            → SMS users JSON (read/write: subscription status)
-                            → Trends filesystem (read-only: PNG charts keyed by phone number)
+User browser (PWA) → Django views → portal DB (SQLite, owns users/profiles)
+                                  → WeatherGuard DB (feedback.db, shared with Health_Guard)
+                                      ├── alerts_queue  (runner writes → Zdrowa reads & pushes)
+                                      ├── forecast_alerts (predictive risk windows)
+                                      ├── push_subscriptions (per-user browser endpoints)
+                                      ├── weekly_reports (AI-generated health summaries)
+                                      ├── readings / alerts / symptom_log / wellbeing
+                                      └── Trends filesystem (read-only: PNG charts by phone)
 ```
 
 ### Key Modules
 
 - **`portal/models.py`** — Two models:
-  - `UserProfile` (one-to-one with Django `User`): phone (E.164), gender, alert preferences (migraine/allergy/heart), SMS subscription flag, menstrual cycle data, force-password-change flag.
+  - `UserProfile` (one-to-one with Django `User`): phone (E.164), gender, alert preferences (migraine/allergy/heart), menstrual cycle data, force-password-change flag.
   - `DailyWellbeing`: daily stress/exercise level per user (indexed by user + day).
 
-- **`portal/views.py`** — Auth views (login, logout, password change), dashboard, settings, and staff-only admin tools (create/import/reset/delete users). Staff-only views check `request.user.is_staff`.
+- **`portal/views.py`** — Auth views (login, logout, password change), dashboard, settings, staff-only admin tools, PWA service worker, push subscription endpoint.
 
-- **`portal/views_wg.py`** — Views that read from the WeatherGuard integration layer: sensor data display, health alerts, and trend chart serving. Trend file access is restricted: the requested filename must contain the user's own phone number.
+- **`portal/views_wg.py`** — Views reading from WeatherGuard integration layer: sensor data, alerts, trends, symptom log, wellbeing, weekly reports + correlation.
 
-- **`portal/wg_sources.py`** — Data access layer for all external WeatherGuard sources. Direct SQLite3 queries (not Django ORM) against `WEATHERGUARD_DB`. Also manages SMS subscription JSON and trend file discovery.
+- **`portal/wg_sources.py`** — Data access layer for WeatherGuard SQLite (`feedback.db`). Direct SQLite3 queries (not Django ORM). Includes push subscription management, alerts queue processing, correlation computation, and tip generation.
 
-- **`portal/users_import.py`** — Parses user import files (JSON, CSV, or space-separated) from `/opt/weatherguard/config/users.txt`. Deduplicates by phone number.
+- **`portal/context_processors.py`** — Injects `vapid_public_key` and `unread_count` (unsent alerts_queue entries) into every authenticated template.
 
-- **`portal/middleware.py`** — `ForcePasswordChangeMiddleware`: redirects non-staff users to `/password/change/` if `UserProfile.must_change_password` is set. Exempts logout, password change, admin, and static file URLs.
+- **`portal/users_import.py`** — Parses user import files (JSON, CSV, space-separated).
+
+- **`portal/middleware.py`** — `ForcePasswordChangeMiddleware`: redirects non-staff users to `/password/change/` if `UserProfile.must_change_password` is set.
 
 ### URL Structure
 
 ```
-/                    → dashboard
-/alerts/             → health alerts + SMS toggle
-/data/               → recent sensor readings (up to 1500 rows from WeatherGuard DB)
-/trends/             → list trend charts
-/trends/file/<fname> → serve trend PNG (phone-number-validated)
-/settings/           → edit profile (name, phone, gender, alert types)
-/password/change/    → password change
-/admin-tools/        → staff: user management (create, import, reset, delete)
-/admin-tools/user/<id>/ → staff: edit individual user
-/admin/              → Django admin
+/                        → dashboard (with Porada dnia + Prognoza 12h)
+/alerts/                 → health alerts history (Web Push, no SMS)
+/data/                   → recent sensor readings
+/trends/                 → list trend charts
+/trends/file/<fname>     → serve trend PNG (phone-number-validated)
+/raporty/                → weekly AI reports + correlation chart
+/settings/               → edit profile (name, phone, gender, alert types, cycle)
+/wellbeing/              → daily wellbeing entry
+/symptom_log/            → symptom log (records feats_json for ML)
+/export/                 → CSV export
+/password/change/        → password change
+/push/subscribe/         → POST: save/remove push subscription
+/admin-tools/            → staff: user management
+/admin-tools/push-queue/ → staff: process pending push queue
+/admin/                  → Django admin
 ```
+
+### Web Push / PWA
+
+- VAPID keys generated once with `python manage.py generate_vapid_keys`.
+- `base.html` requests push permission on load and POSTs subscription to `/push/subscribe/`.
+- Browser subscriptions stored in `feedback.db` `push_subscriptions` table.
+- Health_Guard runner writes alert triggers to `alerts_queue` table.
+- `/admin-tools/push-queue/` (staff) or a cron job calls `process_alerts_queue()` to dispatch pushes.
+- Service worker (`/sw.js`) handles push events and notification clicks.
 
 ### Auth Notes
 
-- Login uses email as username (`USERNAME_FIELD` effectively via admin setup; check user creation logic in `views.py`).
-- New users created by staff get temporary passwords and `must_change_password=True`, enforced by middleware.
+- Login uses email as username.
+- New users get temporary passwords and `must_change_password=True`, enforced by middleware.
 - Minimum password length: 10 characters.

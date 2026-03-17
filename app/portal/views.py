@@ -20,7 +20,13 @@ from datetime import date
 
 from .models import UserProfile, DailyWellbeing
 from .utils import greeting as make_greeting
-from .wg_sources import last_readings, sms_subscription_status, set_sms_subscription, list_trend_files, write_wg_user, dashboard_summary, db_stats, all_users_latest_scores, users_last_scores, recent_alerts_all, batch_recent_alerts
+from .wg_sources import (
+    last_readings, sms_subscription_status, set_sms_subscription,
+    list_trend_files, write_wg_user, dashboard_summary, db_stats,
+    all_users_latest_scores, users_last_scores, recent_alerts_all, batch_recent_alerts,
+    save_push_subscription, delete_push_subscription, process_alerts_queue,
+    forecast_alerts_for_user, generate_daily_tip,
+)
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
 
@@ -73,10 +79,14 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
     summary: dict = {"scores": {}, "env": {}, "last_dt": None}
     today_wb = None
+    forecast_data = []
+    tip = None
 
     if prof.phone_e164:
         profiles = list(prof.enabled_alerts) if prof.enabled_alerts else ["migraine", "allergy", "heart"]
         summary = dashboard_summary(settings.WEATHERGUARD_DB, prof.phone_e164, profiles)
+        forecast_data = forecast_alerts_for_user(settings.WEATHERGUARD_DB, prof.phone_e164, hours=12)
+        tip = generate_daily_tip(summary.get("scores", {}), summary.get("env", {}), profiles)
 
     try:
         today_wb = DailyWellbeing.objects.get(user=request.user, day=date.today())
@@ -96,6 +106,8 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         "today_wb": today_wb,
         "greeting": make_greeting(request.user.first_name, getattr(prof, "gender", "")),
         "show_onboarding": show_onboarding,
+        "forecast_data": forecast_data,
+        "tip": tip,
     })
 
 @login_required
@@ -661,7 +673,7 @@ def pwa_manifest(request: HttpRequest) -> HttpResponse:
 
 def pwa_sw(request: HttpRequest) -> HttpResponse:
     sw_js = r"""
-const CACHE = 'zdrowa-v1';
+const CACHE = 'zdrowa-v2';
 const SHELL = [
   '/',
   '/static/portal/icons/icon-192.png',
@@ -684,11 +696,7 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-
-  // Skip non-GET and cross-origin
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-
-  // Static assets: cache-first
   if (url.pathname.startsWith('/static/')) {
     e.respondWith(
       caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
@@ -699,8 +707,6 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-
-  // Navigation: network-first, offline fallback
   if (e.request.mode === 'navigate') {
     e.respondWith(
       fetch(e.request).catch(() =>
@@ -709,6 +715,40 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
+});
+
+/* ── Push notification handler ── */
+self.addEventListener('push', e => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; } catch(err) {}
+  const title = data.title || 'Zdrowa — Alert zdrowotny';
+  const options = {
+    body: data.body || 'Sprawdź panel zdrowia.',
+    icon: '/static/portal/icons/icon-192.png',
+    badge: '/static/portal/icons/icon-192.png',
+    data: { url: data.url || '/' },
+    vibrate: [200, 100, 200],
+    requireInteraction: true,
+    tag: 'zdrowa-alert',
+    renotify: true,
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data || {}).url || '/';
+  e.waitUntil(
+    clients.matchAll({type: 'window', includeUncontrolled: true}).then(cls => {
+      for (const c of cls) {
+        if (c.url.includes(location.origin) && 'focus' in c) {
+          c.navigate(url);
+          return c.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
 });
 """.strip()
     resp = HttpResponse(sw_js, content_type="application/javascript; charset=utf-8")
@@ -720,3 +760,54 @@ self.addEventListener('fetch', e => {
 @login_required
 def pwa_offline(request: HttpRequest) -> HttpResponse:
     return render(request, "portal/offline.html", {})
+
+
+@login_required
+def push_subscribe(request: HttpRequest) -> HttpResponse:
+    """Store or remove a Web Push subscription for the logged-in user."""
+    import json as _json
+    from django.http import JsonResponse
+    prof = _get_profile(request.user)
+    if not prof.phone_e164:
+        return JsonResponse({"ok": False, "error": "no_phone"}, status=400)
+    if request.method == "POST":
+        try:
+            body = _json.loads(request.body)
+        except Exception:
+            return JsonResponse({"ok": False, "error": "bad_json"}, status=400)
+        action = body.get("action", "subscribe")
+        endpoint = body.get("endpoint", "")
+        if not endpoint:
+            return JsonResponse({"ok": False, "error": "no_endpoint"}, status=400)
+        if action == "unsubscribe":
+            delete_push_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, endpoint)
+        else:
+            keys = body.get("keys") or {}
+            p256dh = keys.get("p256dh", "")
+            auth = keys.get("auth", "")
+            if not p256dh or not auth:
+                return JsonResponse({"ok": False, "error": "missing_keys"}, status=400)
+            save_push_subscription(settings.WEATHERGUARD_DB, prof.phone_e164, endpoint, p256dh, auth)
+        return JsonResponse({"ok": True})
+    return JsonResponse({"ok": False, "error": "method"}, status=405)
+
+
+@user_passes_test(_is_staff)
+def process_push_queue(request: HttpRequest) -> HttpResponse:
+    """Staff-only: process the alerts_queue and send Web Push notifications."""
+    sent = 0
+    error = None
+    if request.method == "POST":
+        try:
+            sent = process_alerts_queue(
+                settings.WEATHERGUARD_DB,
+                getattr(settings, "VAPID_PRIVATE_KEY", ""),
+                getattr(settings, "VAPID_PUBLIC_KEY", ""),
+                getattr(settings, "VAPID_SUBJECT", "mailto:admin@zdrowa.pracunia.pl"),
+            )
+            messages.success(request, f"Wysłano {sent} powiadomień push.")
+        except Exception as e:
+            error = str(e)
+            messages.error(request, f"Błąd: {error}")
+        return redirect("admin_system")
+    return HttpResponse(f"Wyślij POST aby przetworzyć kolejkę. Przykład: curl -X POST {request.build_absolute_uri()}", content_type="text/plain")

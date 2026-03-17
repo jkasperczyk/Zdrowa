@@ -782,6 +782,402 @@ def write_symptom_log(
         return False
 
 
+# ── Push subscription management ──────────────────────────────────────────────
+
+def save_push_subscription(db_path: str, phone: str, endpoint: str, p256dh: str, auth: str) -> bool:
+    try:
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT NOT NULL, endpoint TEXT NOT NULL,
+                    keys_p256dh TEXT NOT NULL, keys_auth TEXT NOT NULL, created_at TEXT NOT NULL,
+                    UNIQUE(phone, endpoint)
+                )""")
+            c.execute("""
+                INSERT INTO push_subscriptions(phone, endpoint, keys_p256dh, keys_auth, created_at)
+                VALUES(?,?,?,?,?)
+                ON CONFLICT(phone, endpoint) DO UPDATE SET
+                    keys_p256dh=excluded.keys_p256dh, keys_auth=excluded.keys_auth""",
+                (phone, endpoint, p256dh, auth, now))
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception:
+        return False
+
+
+def delete_push_subscription(db_path: str, phone: str, endpoint: str) -> bool:
+    try:
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute("DELETE FROM push_subscriptions WHERE phone=? AND endpoint=?", (phone, endpoint))
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception:
+        return False
+
+
+def get_push_subscriptions(db_path: str, phone: str) -> List[Dict[str, Any]]:
+    if not os.path.exists(db_path):
+        return []
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "push_subscriptions"):
+            return []
+        rows = c.execute(
+            "SELECT endpoint, keys_p256dh, keys_auth FROM push_subscriptions WHERE phone=?", (phone,)
+        ).fetchall()
+        return [{"endpoint": r[0], "keys": {"p256dh": r[1], "auth": r[2]}} for r in rows]
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+def process_alerts_queue(
+    db_path: str,
+    vapid_private_key: str,
+    vapid_public_key: str,
+    vapid_subject: str,
+) -> int:
+    """Read unsent alerts from alerts_queue, send Web Push to subscribers, mark as sent.
+    Returns count of successfully sent notifications."""
+    if not os.path.exists(db_path) or not vapid_private_key:
+        return 0
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        return 0
+
+    c = sqlite3.connect(db_path)
+    sent = 0
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        if not _table_exists_raw(c, "alerts_queue"):
+            return 0
+        rows = c.execute(
+            "SELECT id, phone, profile, score, message FROM alerts_queue WHERE sent_at IS NULL ORDER BY created_at ASC LIMIT 100"
+        ).fetchall()
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        for alert_id, phone, profile, score, message in rows:
+            subs = get_push_subscriptions(db_path, phone)
+            if not subs:
+                # No subscriptions — mark as sent anyway (no-op)
+                c.execute("UPDATE alerts_queue SET sent_at=? WHERE id=?", (now, alert_id))
+                continue
+            profile_label = {"migraine": "migreny", "allergy": "alergii", "heart": "sercowe"}.get(profile, profile)
+            push_data = json.dumps({
+                "title": f"Alert {profile_label}: {score}/100",
+                "body": (message or f"Ryzyko {profile_label} osiągnęło {score}/100")[:200],
+                "url": "/",
+            }, ensure_ascii=False)
+            failed_endpoints = []
+            ok = False
+            for sub in subs:
+                try:
+                    webpush(
+                        subscription_info=sub,
+                        data=push_data,
+                        vapid_private_key=vapid_private_key,
+                        vapid_claims={"sub": vapid_subject},
+                        ttl=3600,
+                        content_encoding="aes128gcm",
+                    )
+                    ok = True
+                    sent += 1
+                except Exception as e:
+                    err_str = str(e)
+                    if "410" in err_str or "404" in err_str:
+                        failed_endpoints.append(sub["endpoint"])
+            # Clean up expired subscriptions
+            for ep in failed_endpoints:
+                try:
+                    c.execute("DELETE FROM push_subscriptions WHERE phone=? AND endpoint=?", (phone, ep))
+                except Exception:
+                    pass
+            if ok or not subs:
+                c.execute("UPDATE alerts_queue SET sent_at=? WHERE id=?", (now, alert_id))
+        c.commit()
+    except Exception:
+        pass
+    finally:
+        c.close()
+    return sent
+
+
+def _table_exists_raw(c: sqlite3.Connection, name: str) -> bool:
+    row = c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
+    return bool(row)
+
+
+def get_unread_alerts_count(db_path: str, phone: str, hours: int = 48) -> int:
+    """Count unsent alerts in the queue for this phone (proxy for 'unread')."""
+    if not os.path.exists(db_path):
+        return 0
+    since = (datetime.now(tz=timezone.utc) - timedelta(hours=hours)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "alerts_queue"):
+            return 0
+        row = c.execute(
+            "SELECT COUNT(*) FROM alerts_queue WHERE phone=? AND created_at>=?", (phone, since)
+        ).fetchone()
+        return int(row[0]) if row else 0
+    except Exception:
+        return 0
+    finally:
+        c.close()
+
+
+# ── Forecast alerts ────────────────────────────────────────────────────────────
+
+def forecast_alerts_for_user(db_path: str, phone: str, hours: int = 12) -> List[Dict[str, Any]]:
+    """Return forecast alerts for the user from the last `hours` hours."""
+    if not os.path.exists(db_path):
+        return []
+    since = (datetime.now(tz=timezone.utc) - timedelta(hours=hours)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "forecast_alerts"):
+            return []
+        rows = c.execute(
+            "SELECT profile, hour_offset, forecast_score, current_score, threshold, message, created_at"
+            " FROM forecast_alerts WHERE phone=? AND created_at>=? ORDER BY created_at DESC LIMIT 50",
+            (phone, since)
+        ).fetchall()
+        return [
+            {"profile": r[0], "hour_offset": r[1], "forecast_score": r[2],
+             "current_score": r[3], "threshold": r[4], "message": r[5], "created_at": r[6]}
+            for r in rows
+        ]
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+# ── Weekly reports ──────────────────────────────────────────────────────────────
+
+def get_weekly_reports(db_path: str, phone: str, limit: int = 10) -> List[Dict[str, Any]]:
+    if not os.path.exists(db_path):
+        return []
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "weekly_reports"):
+            return []
+        rows = c.execute(
+            "SELECT id, week_start, week_end, report_html, created_at"
+            " FROM weekly_reports WHERE phone=? ORDER BY week_start DESC LIMIT ?",
+            (phone, limit)
+        ).fetchall()
+        return [{"id": r[0], "week_start": r[1], "week_end": r[2],
+                 "report_html": r[3], "created_at": r[4]} for r in rows]
+    except Exception:
+        return []
+    finally:
+        c.close()
+
+
+def save_weekly_report(db_path: str, phone: str, week_start: str, week_end: str, report_html: str) -> bool:
+    try:
+        now = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            c.execute("""
+                CREATE TABLE IF NOT EXISTS weekly_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phone TEXT NOT NULL, week_start TEXT NOT NULL, week_end TEXT NOT NULL,
+                    report_html TEXT NOT NULL, created_at TEXT NOT NULL,
+                    UNIQUE(phone, week_start)
+                )""")
+            c.execute("""
+                INSERT INTO weekly_reports(phone, week_start, week_end, report_html, created_at)
+                VALUES(?,?,?,?,?)
+                ON CONFLICT(phone, week_start) DO UPDATE SET
+                    report_html=excluded.report_html, created_at=excluded.created_at""",
+                (phone, week_start, week_end, report_html, now))
+            c.commit()
+        finally:
+            c.close()
+        return True
+    except Exception:
+        return False
+
+
+# ── Contextual daily tips ──────────────────────────────────────────────────────
+
+def generate_daily_tip(scores: Dict[str, Any], env_data: Dict[str, Any], profiles: List[str]) -> Optional[str]:
+    """Generate a short rule-based contextual tip based on current conditions."""
+    tips = []
+
+    has_allergy = "allergy" in profiles
+    has_migraine = "migraine" in profiles
+    has_heart = "heart" in profiles
+
+    pollen = env_data.get("pollen_max_6h") or env_data.get("google_pollen_max") or 0
+    try:
+        pollen = float(pollen)
+    except Exception:
+        pollen = 0
+
+    aqi = env_data.get("aqi_us_max_6h") or 0
+    try:
+        aqi = float(aqi)
+    except Exception:
+        aqi = 0
+
+    pressure_delta = env_data.get("pressure_delta_6h")
+    try:
+        pressure_delta = float(pressure_delta) if pressure_delta is not None else None
+    except Exception:
+        pressure_delta = None
+
+    # High pollen + allergy
+    if has_allergy and pollen >= 40:
+        gp_type = env_data.get("google_pollen_type") or "pyłków"
+        tips.append(f"Wysokie stężenie {gp_type.lower()} — rozważ lek antyhistaminowy przed wyjściem.")
+
+    # Falling pressure + migraine
+    if has_migraine and pressure_delta is not None and pressure_delta <= -4:
+        tips.append(f"Ciśnienie spada ({pressure_delta:+.1f} hPa/6h) — unikaj alkoholu i zadbaj o nawodnienie.")
+
+    # Bad AQI + heart
+    if has_heart and aqi >= 101:
+        tips.append(f"Słaba jakość powietrza (AQI {aqi:.0f}) — ogranicz wysiłek na zewnątrz.")
+
+    # Good conditions
+    if not tips:
+        allergy_s = scores.get("allergy", {})
+        migraine_s = scores.get("migraine", {})
+        heart_s = scores.get("heart", {})
+        all_scores = [
+            allergy_s.get("score", 0) if allergy_s else 0,
+            migraine_s.get("score", 0) if migraine_s else 0,
+            heart_s.get("score", 0) if heart_s else 0,
+        ]
+        max_score = max(s for s in all_scores if s)
+        if max_score < 30:
+            tips.append("Warunki sprzyjające — dobry dzień na aktywność na świeżym powietrzu!")
+
+    return tips[0] if tips else None
+
+
+# ── Correlation data (for correlation dashboard) ───────────────────────────────
+
+def correlation_data(db_path: str, phone: str, profile: str, days: int = 30) -> Dict[str, Any]:
+    """Compute correlation between daily risk scores and symptom reports.
+
+    Returns:
+        dates: list of date strings
+        scores: list of max daily scores
+        symptoms: list of symptom severity (0 if no report that day)
+        correlations: dict of {env_key: pearson_r}  (pressure_delta_6h, aqi, pollen)
+        symptom_dates: set of dates with reported symptoms
+    """
+    empty: Dict[str, Any] = {"dates": [], "scores": [], "symptoms": [], "correlations": {}, "symptom_dates": [], "symptom_scores": []}
+    if not os.path.exists(db_path):
+        return empty
+
+    since = int((datetime.now(tz=timezone.utc) - timedelta(days=days)).timestamp())
+    since_day = (datetime.now(tz=timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    c = _connect_feedback(db_path)
+    try:
+        # Daily max scores
+        score_map: Dict[str, float] = {}
+        env_map: Dict[str, Dict[str, float]] = {}  # date -> feats
+        if _table_exists(c, "readings"):
+            cols = set(_cols(c, "readings"))
+            has_feats = "feats_json" in cols
+            sel = "ts, score" + (", feats_json" if has_feats else "")
+            rows = c.execute(
+                f"SELECT {sel} FROM readings WHERE phone=? AND profile=? AND ts>=? ORDER BY ts ASC",
+                (phone, profile, since)
+            ).fetchall()
+            for r in rows:
+                day = datetime.fromtimestamp(int(r[0]), tz=timezone.utc).strftime("%Y-%m-%d")
+                score = float(r[1] or 0)
+                if day not in score_map or score > score_map[day]:
+                    score_map[day] = score
+                if has_feats and r[2] and day not in env_map:
+                    try:
+                        env_map[day] = json.loads(r[2]) or {}
+                    except Exception:
+                        env_map[day] = {}
+
+        # Symptom reports
+        symptom_map: Dict[str, float] = {}
+        if _table_exists(c, "symptom_log"):
+            rows = c.execute(
+                "SELECT timestamp, severity_1_10 FROM symptom_log WHERE phone=? AND profile=? AND timestamp>=?"
+                " ORDER BY timestamp ASC",
+                (phone, profile, (datetime.now(tz=timezone.utc) - timedelta(days=days)).isoformat())
+            ).fetchall()
+            for r in rows:
+                try:
+                    day = r[0][:10]
+                    sev = float(r[1] or 0)
+                    if day not in symptom_map or sev > symptom_map[day]:
+                        symptom_map[day] = sev
+                except Exception:
+                    pass
+
+        if not score_map:
+            return empty
+
+        all_days = sorted(set(list(score_map.keys()) + list(symptom_map.keys())))
+        dates = all_days
+        scores = [score_map.get(d, 0.0) for d in all_days]
+        symptoms = [symptom_map.get(d, 0.0) for d in all_days]
+
+        # Pearson correlation helper
+        def pearson(x_list, y_list):
+            n = len(x_list)
+            if n < 3:
+                return None
+            mean_x = sum(x_list) / n
+            mean_y = sum(y_list) / n
+            num = sum((x - mean_x) * (y - mean_y) for x, y in zip(x_list, y_list))
+            den_x = sum((x - mean_x) ** 2 for x in x_list) ** 0.5
+            den_y = sum((y - mean_y) ** 2 for y in y_list) ** 0.5
+            if den_x == 0 or den_y == 0:
+                return None
+            return round(num / (den_x * den_y), 3)
+
+        correlations: Dict[str, Any] = {}
+        for feat_key in ["pressure_delta_6h", "aqi_us_max_6h", "pollen_max_6h", "humidity_now", "temp_delta_6h"]:
+            feat_vals = [env_map.get(d, {}).get(feat_key) for d in all_days]
+            pairs = [(f, s) for f, s in zip(feat_vals, symptoms) if f is not None]
+            if len(pairs) >= 3:
+                fv, sv = zip(*pairs)
+                r_val = pearson(list(fv), list(sv))
+                if r_val is not None:
+                    label = "silna" if abs(r_val) >= 0.6 else ("umiarkowana" if abs(r_val) >= 0.3 else "słaba")
+                    correlations[feat_key] = {"r": r_val, "label": label}
+
+        sorted_symp_dates = sorted(symptom_map.keys())
+        return {
+            "dates": dates,
+            "scores": scores,
+            "symptoms": symptoms,
+            "correlations": correlations,
+            "symptom_dates": sorted_symp_dates,
+            "symptom_scores": [symptom_map[d] for d in sorted_symp_dates],
+        }
+    except Exception:
+        return empty
+    finally:
+        c.close()
+
+
 def symptom_log_history(db_path: str, phone: str, days: int = 30) -> List[Dict[str, Any]]:
     """Return symptom log entries for a phone, newest first."""
     if not os.path.exists(db_path):

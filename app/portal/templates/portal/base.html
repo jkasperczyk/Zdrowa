@@ -568,6 +568,7 @@
         <a href="/alerts/"     class="{% if '/alerts'     in request.path %}active{% endif %}">Alerty</a>
         <a href="/data/"       class="{% if '/data'       in request.path %}active{% endif %}">Dane</a>
         <a href="/trends/"     class="{% if '/trends'     in request.path %}active{% endif %}">Trendy</a>
+        <a href="/raporty/"    class="{% if '/raporty'    in request.path %}active{% endif %}">Raporty</a>
         <a href="/settings/"   class="{% if '/settings'   in request.path %}active{% endif %}">Ustawienia</a>
         {% if request.user.is_staff %}
           <a href="/admin-tools/" class="{% if '/admin-tools' in request.path and '/admin-tools/system' not in request.path %}active{% endif %}">Admin<span class="pill">users</span></a>
@@ -577,6 +578,9 @@
     </nav>
     <div class="nav-end">
       {% if request.user.is_authenticated %}
+        <a href="/alerts/" class="nav-bell" id="nav-bell" title="Alerty" style="position:relative;padding:6px 8px;border-radius:var(--r-sm);color:var(--muted);font-size:1.1rem;line-height:1;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)">
+          🔔<span class="bell-dot" id="bell-dot" style="display:none;position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:var(--red);border:2px solid var(--bg)"></span>
+        </a>
         <span class="nav-user">{{ request.user.username }}</span>
         <a href="/logout/" class="btn sm secondary">Wyloguj</a>
       {% endif %}
@@ -613,5 +617,58 @@
       navigator.serviceWorker.register('/sw.js', {scope: '/'}).catch(function(){});
     }
   </script>
+  {% if request.user.is_authenticated and vapid_public_key %}
+  <script>
+  (function() {
+    var VAPID_PUBLIC_KEY = '{{ vapid_public_key }}';
+    if (!VAPID_PUBLIC_KEY || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    function urlBase64ToUint8Array(base64String) {
+      var padding = '='.repeat((4 - base64String.length % 4) % 4);
+      var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      var rawData = window.atob(base64);
+      var outputArray = new Uint8Array(rawData.length);
+      for (var i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+      return outputArray;
+    }
+
+    function sendSubscription(sub, action) {
+      var subJson = sub ? sub.toJSON() : {endpoint: '', keys: {}};
+      fetch('/push/subscribe/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || ''},
+        body: JSON.stringify(Object.assign({action: action}, subJson)),
+      }).catch(function(){});
+    }
+
+    navigator.serviceWorker.ready.then(function(reg) {
+      reg.pushManager.getSubscription().then(function(existing) {
+        if (existing) {
+          sendSubscription(existing, 'subscribe');
+          return;
+        }
+        if (Notification.permission === 'denied') return;
+        Notification.requestPermission().then(function(permission) {
+          if (permission !== 'granted') return;
+          reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          }).then(function(sub) {
+            sendSubscription(sub, 'subscribe');
+          }).catch(function(){});
+        });
+      });
+    });
+  })();
+  </script>
+  {% endif %}
+  {% if unread_count %}
+  <script>
+  (function() {
+    var dot = document.getElementById('bell-dot');
+    if (dot) dot.style.display = 'block';
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

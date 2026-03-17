@@ -15,6 +15,11 @@ urlpatterns = [
     path("settings/", views_wg.settings_view, name="settings"),
     path("wellbeing/", views_wg.wellbeing_view, name="wellbeing"),
     path("symptom/", views_wg.symptom_log_view, name="symptom_log"),
+    path("raporty/", views_wg.raporty_view, name="raporty"),
+
+    # Push notifications
+    path("push/subscribe/", views.push_subscribe, name="push_subscribe"),
+    path("admin-tools/push-queue/", views.process_push_queue, name="process_push_queue"),
 
     path("password/change/", views.password_change_view, name="password_change"),
 

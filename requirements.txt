@@ -2,3 +2,5 @@ Django==5.0.10
 gunicorn==22.0.0
 python-dotenv==1.0.1
 cryptography==43.0.3
+pywebpush>=1.14.0
+openai>=1.30.0

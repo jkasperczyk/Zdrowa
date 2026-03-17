@@ -54,6 +54,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "portal.context_processors.push_context",
             ],
         },
     },
@@ -123,3 +124,12 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", "no-reply@zdrowa.pracunia.pl")
 
 WEATHERGUARD_LOG = env("WG_LOG_FILE", "/opt/weatherguard/logs/weatherguard.log")
 WEATHERGUARD_BASE_DIR = env("WG_BASE_DIR", "/opt/weatherguard")
+
+# Web Push (VAPID) — generate once with: python manage.py generate_vapid_keys
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY  = env("VAPID_PUBLIC_KEY", "")
+VAPID_SUBJECT     = env("VAPID_SUBJECT", "mailto:admin@zdrowa.pracunia.pl")
+
+# OpenAI for weekly health reports
+OPENAI_API_KEY = env("OPENAI_API_KEY", "")
+OPENAI_MODEL   = env("OPENAI_MODEL", "gpt-4o-mini")

@@ -268,6 +268,38 @@
     </div>
   {% endif %}{% endwith %}
 
+  {# ── Porada dnia ── #}
+  {% if tip %}
+  <div class="card" style="border-color:rgba(79,143,255,.3);background:linear-gradient(145deg,rgba(79,143,255,.07) 0%,rgba(255,255,255,.01) 100%)">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <span style="font-size:1.4rem;flex-shrink:0;margin-top:2px">💡</span>
+      <div>
+        <p class="section-title" style="margin-bottom:4px">Porada dnia</p>
+        <p style="margin:0;color:var(--text-2)">{{ tip }}</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Prognoza na najbliższe 12h ── #}
+  {% if forecast_data %}
+  <div>
+    <p class="section-title">Prognoza — najbliższe 12h</p>
+    <div class="row-4">
+      {% for f in forecast_data %}
+        <div class="card env-tile {% if f.forecast_score >= f.threshold %}warn-tile{% endif %}">
+          <div class="card-title">+{{ f.hour_offset }}h — {{ f.profile }}</div>
+          <div class="env-val {% if f.forecast_score >= f.threshold %}warn{% endif %}">{{ f.forecast_score }}</div>
+          <div class="env-unit">prognozowane ryzyko / próg {{ f.threshold }}</div>
+          {% if f.message %}
+            <p class="muted small" style="margin-top:6px;font-size:.72rem">{{ f.message }}</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Wellbeing + quick actions ── #}
   <div class="row">
     <div class="card">
@@ -333,9 +365,10 @@
     <div class="card">
       <h4>Skróty</h4>
       <div class="stack" style="gap:8px;margin-top:4px">
-        <a href="{% url 'alerts' %}" class="btn secondary">Alerty SMS</a>
+        <a href="{% url 'alerts' %}" class="btn secondary">Alerty</a>
         <a href="{% url 'data' %}" class="btn secondary">Surowe dane</a>
         <a href="{% url 'trends' %}" class="btn secondary">Trendy (wykresy)</a>
+        <a href="{% url 'raporty' %}" class="btn secondary">Raporty</a>
         <a href="{% url 'settings' %}" class="btn secondary">Ustawienia</a>
       </div>
     </div>

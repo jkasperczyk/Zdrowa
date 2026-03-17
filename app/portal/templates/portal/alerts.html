@@ -1,59 +1,30 @@
 {% extends "portal/base.html" %}
 {% block content %}
 <div class="stack">
-  <div>
-    <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Alerty</h1>
-    <p class="muted small">Sterowanie START/STOP i historia alertów z WeatherGuard (ostatnie 7 dni).</p>
-  </div>
-
-  <div class="row">
-    <div class="card">
-      <h4>Sterowanie alertami (SMS)</h4>
-
-      {% if not prof.phone_e164 %}
-        <p>Ustaw numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>.</p>
-      {% else %}
-        <p class="muted">Numer: <b>{{ prof.phone_e164 }}</b></p>
-        <p class="muted" style="margin-top:6px">Status:
-          {% if status is None %}
-            <span class="badge">brak wpisu (domyślnie włączone)</span>
-          {% elif status %}
-            <span class="badge green">WŁĄCZONE</span>
-          {% else %}
-            <span class="badge red">WYŁĄCZONE</span>
-          {% endif %}
-        </p>
-        <form method="post" class="actions mt-2">
-          {% csrf_token %}
-          <button class="btn sm" name="action" value="start" type="submit">START (włącz)</button>
-          <button class="btn sm secondary" name="action" value="stop" type="submit">STOP (wyłącz)</button>
-        </form>
-      {% endif %}
-    </div>
-
-    <div class="card">
-      <h4>Filtr profilu</h4>
-
-      {% if not prof.phone_e164 %}
-        <p class="muted">Ustaw telefon w Ustawieniach.</p>
-      {% else %}
-        <form method="get" class="flex" style="align-items:flex-end;gap:10px">
-          <div style="flex:1">
-            <label>Profil</label>
-            <select name="profile">
-              <option value="" {% if not selected_profile %}selected{% endif %}>(wszystkie)</option>
-              {% for p in profiles %}
-                <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <button class="btn sm" type="submit">Filtruj</button>
-        </form>
-      {% endif %}
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Alerty</h1>
+      <p class="muted small">Historia alertów z WeatherGuard — ostatnie 7 dni. Powiadomienia są dostarczane przez przeglądarkę (Web Push).</p>
     </div>
   </div>
 
   {% if prof.phone_e164 %}
+    <div class="card">
+      <h4>Filtr profilu</h4>
+      <form method="get" class="flex" style="align-items:flex-end;gap:10px">
+        <div style="flex:1">
+          <label>Profil</label>
+          <select name="profile">
+            <option value="" {% if not selected_profile %}selected{% endif %}>(wszystkie)</option>
+            {% for p in profiles %}
+              <option value="{{ p }}" {% if p == selected_profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn sm" type="submit">Filtruj</button>
+      </form>
+    </div>
+
     <div class="card">
       <h4>Historia alertów (7 dni)</h4>
       {% if events %}
@@ -84,6 +55,10 @@
       {% else %}
         <p class="muted" style="margin-top:8px">Brak alertów w ostatnich 7 dniach.</p>
       {% endif %}
+    </div>
+  {% else %}
+    <div class="card">
+      <p>Ustaw numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>, aby otrzymywać alerty.</p>
     </div>
   {% endif %}
 </div>

@@ -1,0 +1,169 @@
+{% extends "portal/base.html" %}
+{% block extra_css %}
+.report-body h3 { font-size: 1rem; font-weight: 700; margin: 1rem 0 .4rem; }
+.report-body p  { margin: .35rem 0; color: var(--text-2); font-size: .9rem; }
+.report-body ul { margin: .35rem 0 .35rem 1.2rem; }
+.report-body li { font-size: .9rem; color: var(--text-2); margin-bottom: .2rem; }
+.corr-bar       { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.corr-label     { width: 140px; font-size: .8rem; color: var(--text-2); flex-shrink: 0; }
+.corr-track     { flex: 1; height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.corr-fill      { height: 100%; border-radius: 3px; }
+.corr-val       { width: 40px; text-align: right; font-size: .8rem; font-family: var(--mono); color: var(--text-2); }
+{% endblock %}
+{% block content %}
+<div class="stack">
+  <div class="flex-between">
+    <div>
+      <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Raporty &amp; Korelacje</h1>
+      <p class="muted small">Tygodniowe raporty zdrowotne i korelacje czynników środowiskowych z objawami.</p>
+    </div>
+    {% if request.user.is_staff and prof.phone_e164 %}
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="generate">
+        <button class="btn sm" type="submit">Generuj raport</button>
+      </form>
+    {% endif %}
+  </div>
+
+  {% if not prof.phone_e164 %}
+    <div class="card">
+      <p>Ustaw numer telefonu w <a href="{% url 'settings' %}">Ustawieniach</a>, aby widzieć raporty.</p>
+    </div>
+  {% else %}
+
+    {# ── Korelacje ── #}
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:14px">
+        <h4 style="margin:0">Korelacje (30 dni)</h4>
+        <form method="get" class="flex" style="gap:8px;align-items:center">
+          <select name="profile" style="width:auto">
+            {% for p in profiles %}
+              <option value="{{ p }}" {% if p == corr_profile %}selected{% endif %}>{{ p }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn sm" type="submit">Zmień</button>
+        </form>
+      </div>
+
+      {% if correlation.correlations %}
+        <p class="muted small" style="margin-bottom:12px">Współczynnik Pearsona r między czynnikiem środowiskowym a nasileniem objawów.</p>
+        {% for factor, rv in correlation.correlations.items %}
+          <div class="corr-bar">
+            <span class="corr-label">{{ factor }}</span>
+            <div class="corr-track">
+              {# r ranges -1..1; map to 0..100% width centred at 50 #}
+              <div class="corr-fill"
+                   style="width:{% widthratio rv.r|add:1 2 100 %}%;
+                          background:{% if rv.r > 0.3 %}var(--danger){% elif rv.r < -0.3 %}var(--success){% else %}var(--accent){% endif %}">
+              </div>
+            </div>
+            <span class="corr-val">{{ rv.r|floatformat:2 }}</span>
+            <span class="muted" style="font-size:.75rem;width:90px">{{ rv.label }}</span>
+          </div>
+        {% endfor %}
+
+        {# ── Chart.js overlay ── #}
+        {% if correlation.dates %}
+        <div style="margin-top:20px">
+          <canvas id="corrChart" height="160"></canvas>
+        </div>
+        {% endif %}
+      {% else %}
+        <p class="muted">Brak wystarczających danych do obliczenia korelacji (min. 5 wpisów objawów i odczytów).</p>
+      {% endif %}
+    </div>
+
+    {# ── Tygodniowe raporty ── #}
+    <div class="card">
+      <h4 style="margin-bottom:12px">Tygodniowe raporty AI</h4>
+      {% if reports %}
+        {% for rep in reports %}
+          <div style="border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:16px">
+            <p class="muted small" style="margin-bottom:8px">{{ rep.week_start }} — {{ rep.week_end }}</p>
+            <div class="report-body">{{ rep.report_html|safe }}</div>
+          </div>
+        {% endfor %}
+      {% else %}
+        <p class="muted">Brak wygenerowanych raportów.
+          {% if request.user.is_staff %}Kliknij „Generuj raport" powyżej.{% endif %}
+        </p>
+      {% endif %}
+    </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+{% if correlation.dates %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var dates   = {{ correlation.dates|safe }};
+  var scores  = {{ correlation.scores|safe }};
+  var sympDates  = {{ correlation.symptom_dates|safe }};
+  var sympScores = {{ correlation.symptom_scores|safe }};
+
+  // Build symptom scatter points aligned to dates index
+  var sympPoints = sympDates.map(function(d, i) {
+    return { x: d, y: sympScores[i] * 10 };  // scale 1–10 → 10–100 for overlay
+  });
+
+  var ctx = document.getElementById('corrChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {
+          label: 'Ryzyko (score)',
+          data: scores,
+          borderColor: 'rgba(79,143,255,0.8)',
+          backgroundColor: 'rgba(79,143,255,0.08)',
+          borderWidth: 2,
+          pointRadius: 2,
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Objawy (×10)',
+          data: sympPoints,
+          type: 'scatter',
+          borderColor: 'rgba(239,68,68,0.9)',
+          backgroundColor: 'rgba(239,68,68,0.7)',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          showLine: false,
+          yAxisID: 'y',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { intersect: false, mode: 'index' },
+      plugins: {
+        legend: { labels: { color: 'var(--text-2)', font: { size: 11 } } },
+        tooltip: { callbacks: {
+          label: function(ctx) {
+            return ctx.dataset.label + ': ' + ctx.parsed.y;
+          }
+        }}
+      },
+      scales: {
+        x: {
+          ticks: { color: 'var(--dim)', maxTicksLimit: 10, font: { size: 10 } },
+          grid:  { color: 'rgba(255,255,255,.05)' },
+        },
+        y: {
+          min: 0, max: 100,
+          ticks: { color: 'var(--dim)', font: { size: 10 } },
+          grid:  { color: 'rgba(255,255,255,.05)' },
+        },
+      },
+    },
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
