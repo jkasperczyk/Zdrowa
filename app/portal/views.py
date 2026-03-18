@@ -131,12 +131,14 @@ def dashboard(request: HttpRequest) -> HttpResponse:
             db_path=settings.WEATHERGUARD_DB, phone=prof.phone_e164,
         )
         for _profile_name, _pdata in summary.get("scores", {}).items():
+            # cache_only=True: never call AI API on page load; precompute_dashboard_cache fills it
             _pdata["ai_summary"] = get_ai_risk_summary(
                 settings.WEATHERGUARD_DB,
                 _profile_name,
                 _pdata.get("score", 0),
                 _pdata.get("reasons", []),
                 _pdata.get("ts", 0),
+                cache_only=True,
             )
 
     try:

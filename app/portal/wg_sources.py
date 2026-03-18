@@ -1228,12 +1228,15 @@ def get_ai_risk_summary(
     score: int,
     reasons: List[str],
     ts: int = 0,
+    cache_only: bool = False,
 ) -> Optional[str]:
-    """One-sentence AI summary for a risk reading, cached permanently per reading timestamp."""
+    """One-sentence AI summary for a risk reading, cached permanently per reading timestamp.
+
+    When cache_only=True (used on dashboard page load), returns None on cache miss
+    instead of calling the AI API — ensures zero API calls during page rendering.
+    Pre-generation is handled by the precompute_dashboard_cache management command.
+    """
     if not db_path or score == 0:
-        return None
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
         return None
 
     cache_key = f"risk_summary:{profile}:{ts}" if ts else ""
@@ -1241,6 +1244,14 @@ def get_ai_risk_summary(
         cached = _get_ai_cache(db_path, cache_key)
         if cached is not None:
             return cached
+
+    # Cache miss: if cache_only mode, return None immediately (no API call on page load)
+    if cache_only:
+        return None
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return None
 
     try:
         from anthropic import Anthropic

@@ -147,6 +147,54 @@ def _generate_rule_based_tips(env_data: dict, profiles: list, scores: dict) -> l
     return tips[:5]
 
 
+def _parse_tips_response(raw: str) -> list:
+    """Parse AI response into a list of tip strings.
+
+    Handles multiple response formats:
+    1. Clean JSON array: ["Tip one", "Tip two"]
+    2. JSON in markdown code block: ```json\n["Tip one"]\n```
+    3. Numbered/bulleted list: "1. Tip one\n2. Tip two"
+    """
+    import re
+
+    text = raw.strip()
+
+    # 1. Try direct JSON parse
+    try:
+        result = json.loads(text)
+        if isinstance(result, list) and result:
+            return [str(t).strip() for t in result if str(t).strip()]
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # 2. Try stripping markdown code block (```json ... ``` or ``` ... ```)
+    backtick_match = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+    if backtick_match:
+        inner = backtick_match.group(1).strip()
+        try:
+            result = json.loads(inner)
+            if isinstance(result, list) and result:
+                return [str(t).strip() for t in result if str(t).strip()]
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # 3. Try parsing as newline-separated list (numbered or bulleted)
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    tips = []
+    for line in lines:
+        # Skip bare JSON punctuation
+        if line in ("[", "]", "{", "}"):
+            continue
+        # Remove leading numbering: "1. ", "1) ", "- ", "* ", "• "
+        cleaned = re.sub(r"^[\d]+[.)]\s*", "", line)
+        cleaned = re.sub(r"^[-*•]\s*", "", cleaned)
+        # Strip surrounding quotes and trailing commas
+        cleaned = cleaned.strip('"').strip("'").rstrip(",").strip()
+        if cleaned and len(cleaned) > 10:
+            tips.append(cleaned)
+    return tips
+
+
 def _generate_ai_tips(env_data: dict, profiles: list, scores: dict) -> list:
     """Call Claude Haiku to generate 3-5 contextual tips. Returns list or raises."""
     from anthropic import Anthropic
@@ -174,9 +222,9 @@ def _generate_ai_tips(env_data: dict, profiles: list, scores: dict) -> list:
         f"Aktualne dane środowiskowe: zmiana ciśnienia={pressure_delta} hPa/6h, "
         f"AQI={aqi}, pyłki={pollen} ({gp_type}), wilgotność={humidity}%, "
         f"indeks Kp={kp}, GIOŚ={gios}, najwyższy wynik ryzyka={max_score}/100. "
-        f"Format odpowiedzi: JSON array z 4 stringami po polsku, każdy to osobna porada (1-2 zdania). "
-        f"Przykład: [\"Porada pierwsza.\", \"Porada druga.\", \"Porada trzecia.\", \"Porada czwarta.\"]. "
-        f"Odpowiedź TYLKO JSON array, bez żadnego dodatkowego tekstu."
+        f"Odpowiedz TYLKO tablicą JSON z 4 stringami po polsku. "
+        f"Bez markdown, bez backticków, bez wyjaśnień. "
+        f'Przykład: ["Porada pierwsza.", "Porada druga.", "Porada trzecia.", "Porada czwarta."]'
     )
 
     client = Anthropic(api_key=api_key)
@@ -187,11 +235,10 @@ def _generate_ai_tips(env_data: dict, profiles: list, scores: dict) -> list:
     )
     raw = (msg.content[0].text or "").strip()
 
-    # Try to parse JSON array
-    tips = json.loads(raw)
-    if not isinstance(tips, list) or not tips:
-        raise ValueError(f"Unexpected response format: {raw[:100]}")
-    return [str(t).strip() for t in tips if str(t).strip()][:5]
+    tips = _parse_tips_response(raw)
+    if not tips:
+        raise ValueError(f"Could not parse tips from response: {raw[:120]}")
+    return tips[:5]
 
 
 def generate_tips_for_user(db_path: str, phone: str, profiles: list, today: str, stdout=None) -> bool:
