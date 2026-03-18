@@ -29,6 +29,9 @@ from .wg_sources import (
     correlation_data,
     generate_symptom_feedback,
     get_ml_status,
+    award_badge,
+    get_user_badges,
+    get_weekly_stats,
 )
 
 ALERT_PROFILES = ["migraine", "allergy", "heart"]
@@ -145,6 +148,7 @@ def settings_view(request: HttpRequest) -> HttpResponse:
     prof = _get_profile(request.user)
     genders = [("unspecified","Nie podano"), ("female","Kobieta"), ("male","Mężczyzna"), ("other","Inne")]
     alert_types = ["migraine","allergy","heart"]
+    font_sizes = [("small","Mały (14px)"), ("normal","Normalny (16px)"), ("large","Duży (18px)")]
 
     if request.method == "POST":
         # ── Auth user fields ──────────────────────────────────────────
@@ -179,6 +183,14 @@ def settings_view(request: HttpRequest) -> HttpResponse:
             prof.cycle_start_date = None
 
         prof.use_ml_prediction = request.POST.get("use_ml_prediction") == "1"
+
+        # ── Display preferences ───────────────────────────────────────
+        fs = (request.POST.get("font_size_preference") or "normal").strip()
+        if fs in ("small", "normal", "large"):
+            prof.font_size_preference = fs
+        prof.high_contrast = request.POST.get("high_contrast") == "1"
+        prof.evening_reminder = request.POST.get("evening_reminder") == "1"
+
         prof.save()
 
         if prof.phone_e164:
@@ -206,11 +218,30 @@ def settings_view(request: HttpRequest) -> HttpResponse:
         except Exception:
             pass
 
+    # ── Badges context ────────────────────────────────────────────────
+    badges_list = []
+    if prof.phone_e164:
+        try:
+            badges_list = get_user_badges(settings.WEATHERGUARD_DB, prof.phone_e164)
+        except Exception:
+            pass
+    badges_dict = {b["badge_id"]: b["earned_at"] for b in badges_list}
+
+    all_badges = [
+        {"id": "streak_3",  "emoji": "🔥", "name": "3 dni z rzędu",   "desc": "Zaloguj samopoczucie 3 dni z rzędu"},
+        {"id": "streak_7",  "emoji": "⚡", "name": "Tydzień",          "desc": "7 dni z rzędu"},
+        {"id": "streak_14", "emoji": "💎", "name": "2 tygodnie",       "desc": "14 dni z rzędu"},
+        {"id": "streak_30", "emoji": "👑", "name": "Mistrz miesiąca",  "desc": "30 dni z rzędu"},
+    ]
+
     return render(request, "portal/settings.html", {
         "prof": prof,
         "genders": genders,
         "alert_types": alert_types,
         "ml_status": ml_status,
+        "font_sizes": font_sizes,
+        "badges": badges_dict,
+        "all_badges": all_badges,
     })
 
 
@@ -221,6 +252,8 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
 
     # Load existing entry for today if present
     entry, _ = DailyWellbeing.objects.get_or_create(user=request.user, day=today)
+
+    milestone_msg = None
 
     if request.method == "POST":
         def _int_or_none(key: str, min_val: int = 1, max_val: int = 10) -> Optional[int]:
@@ -236,13 +269,45 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
         sleep_quality = _int_or_none("sleep_quality_1_10")
         hydration = _int_or_none("hydration_1_10")
         headache = _int_or_none("headache_1_10", min_val=0)  # headache starts at 0
+        daily_note = (request.POST.get("daily_note") or "").strip()[:500]
 
         entry.stress_1_10 = stress
         entry.exercise_1_10 = exercise
         entry.sleep_quality_1_10 = sleep_quality
         entry.hydration_1_10 = hydration
         entry.headache_1_10 = headache
+        entry.daily_note = daily_note
         entry.save()
+
+        # ── Streak logic ──────────────────────────────────────────────
+        from datetime import timedelta
+        last = prof.last_log_date
+        if last is None:
+            # First ever log
+            prof.current_streak = 1
+        elif last == today:
+            # Already logged today — don't change streak
+            pass
+        elif last == today - timedelta(days=1):
+            # Consecutive day
+            prof.current_streak += 1
+        else:
+            # Gap > 1 day — reset
+            prof.current_streak = 1
+        prof.longest_streak = max(prof.longest_streak, prof.current_streak)
+        prof.last_log_date = today
+
+        # ── Badge awards ──────────────────────────────────────────────
+        streak = prof.current_streak
+        badge_milestones = {3: "streak_3", 7: "streak_7", 14: "streak_14", 30: "streak_30"}
+        if streak in badge_milestones and prof.phone_e164:
+            badge_id = badge_milestones[streak]
+            newly_awarded = award_badge(settings.WEATHERGUARD_DB, prof.phone_e164, badge_id)
+            if newly_awarded:
+                names = {3: "3 dni z rzędu!", 7: "Tydzień konsekwencji!", 14: "2 tygodnie!", 30: "Mistrz miesiąca!"}
+                milestone_msg = f"Zdobyto odznakę: {names.get(streak, str(streak) + ' dni')}"
+
+        prof.save(update_fields=["current_streak", "longest_streak", "last_log_date", "updated_at"])
 
         if not prof.phone_e164:
             messages.warning(request, "Zapisano lokalnie, ale brak numeru telefonu — dane nie zsynchronizowano z systemem alertów. Ustaw numer w Ustawieniach.")
@@ -256,14 +321,25 @@ def wellbeing_view(request: HttpRequest) -> HttpResponse:
                 sleep_quality_1_10=sleep_quality,
                 hydration_1_10=hydration,
                 headache_1_10=headache,
+                notes=daily_note or None,
             )
             if ok:
                 messages.success(request, "Zapisano samopoczucie na dziś.")
             else:
                 messages.warning(request, "Zapisano lokalnie, ale synchronizacja z feedback.db nie powiodła się.")
+
+        if milestone_msg:
+            messages.success(request, milestone_msg)
+
         return redirect("wellbeing")
 
-    return render(request, "portal/wellbeing.html", {"prof": prof, "entry": entry, "today": today})
+    return render(request, "portal/wellbeing.html", {
+        "prof": prof,
+        "entry": entry,
+        "today": today,
+        "milestone_msg": milestone_msg,
+        "streak": prof.current_streak,
+    })
 
 
 @login_required
@@ -280,13 +356,27 @@ def csv_export_view(request: HttpRequest) -> HttpResponse:
     phone_clean = prof.phone_e164.replace("+", "").replace(" ", "")
     filename = f"zdrowa_export_{phone_clean}_{today_str}.csv"
 
+    # Enrich export rows with daily_note from Django DB
+    from datetime import datetime as _dt, timezone as _tz
+    wb_notes: Dict[str, str] = {}
+    try:
+        wb_qs = DailyWellbeing.objects.filter(user=request.user).values("day", "daily_note")
+        for wb in wb_qs:
+            wb_notes[str(wb["day"])] = wb["daily_note"] or ""
+    except Exception:
+        pass
+
     output = io.StringIO()
     fieldnames = ["date", "score", "base_score", "threshold", "label", "alert_sent",
-                  "stress_1_10", "exercise_1_10", "sleep_quality_1_10", "hydration_1_10", "headache_1_10"]
+                  "stress_1_10", "exercise_1_10", "sleep_quality_1_10", "hydration_1_10", "headache_1_10",
+                  "daily_note"]
     writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     for row in rows:
-        writer.writerow({k: ("" if row.get(k) is None else row.get(k)) for k in fieldnames})
+        day_key = (row.get("date") or row.get("dt") or "")[:10]
+        row_out = {k: ("" if row.get(k) is None else row.get(k)) for k in fieldnames}
+        row_out["daily_note"] = wb_notes.get(day_key, "")
+        writer.writerow(row_out)
 
     response = HttpResponse(output.getvalue(), content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -451,6 +541,128 @@ def _generate_report_for_user(phone: str) -> bool:
             report_html = f"<p>Błąd generowania raportu: {e}</p>"
 
     return save_weekly_report(db, phone, week_start.isoformat(), week_end.isoformat(), report_html)
+
+
+@login_required
+def pdf_export_view(request: HttpRequest) -> HttpResponse:
+    """Generate a PDF health report for the last 30 days using reportlab."""
+    prof = _get_profile(request.user)
+    try:
+        from reportlab.lib.pagesizes import A4  # type: ignore
+        from reportlab.lib import colors  # type: ignore
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer  # type: ignore
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # type: ignore
+        from reportlab.lib.units import cm  # type: ignore
+    except ImportError:
+        messages.error(request, "Moduł reportlab nie jest zainstalowany. Skontaktuj się z administratorem.")
+        return redirect("data")
+
+    import io as _io
+    today_str = date.today().strftime("%Y%m%d")
+    phone_clean = prof.phone_e164.replace("+", "").replace(" ", "") if prof.phone_e164 else "noname"
+    filename = f"zdrowa_raport_{phone_clean}_{today_str}.pdf"
+
+    buf = _io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=2 * cm, rightMargin=2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("title", parent=styles["Heading1"], fontSize=18, spaceAfter=6)
+    sub_style = ParagraphStyle("sub", parent=styles["Normal"], fontSize=10, textColor=colors.HexColor("#64748b"), spaceAfter=12)
+    section_style = ParagraphStyle("section", parent=styles["Heading2"], fontSize=13, spaceBefore=16, spaceAfter=6)
+    normal_style = styles["Normal"]
+
+    story = []
+    story.append(Paragraph("Raport zdrowotny — Zdrowa", title_style))
+    story.append(Paragraph(
+        f"Użytkownik: {request.user.get_full_name() or request.user.username} &nbsp;|&nbsp; "
+        f"Wygenerowano: {date.today().strftime('%d.%m.%Y')} &nbsp;|&nbsp; Ostatnie 30 dni",
+        sub_style,
+    ))
+    story.append(Spacer(1, 0.3 * cm))
+
+    # ── Wellbeing section ─────────────────────────────────────────────
+    story.append(Paragraph("Samopoczucie (ostatnie 30 dni)", section_style))
+    wb_rows = DailyWellbeing.objects.filter(
+        user=request.user
+    ).order_by("-day")[:30]
+
+    if wb_rows:
+        table_data = [["Data", "Stres", "Aktywność", "Sen", "Nawodnienie", "Ból głowy", "Notatka"]]
+        for wb in wb_rows:
+            table_data.append([
+                str(wb.day),
+                str(wb.stress_1_10) if wb.stress_1_10 is not None else "—",
+                str(wb.exercise_1_10) if wb.exercise_1_10 is not None else "—",
+                str(wb.sleep_quality_1_10) if wb.sleep_quality_1_10 is not None else "—",
+                str(wb.hydration_1_10) if wb.hydration_1_10 is not None else "—",
+                str(wb.headache_1_10) if wb.headache_1_10 is not None else "—",
+                (wb.daily_note or "")[:60],
+            ])
+        col_widths = [2.2 * cm, 1.4 * cm, 1.9 * cm, 1.3 * cm, 2.2 * cm, 2.0 * cm, None]
+        t = Table(table_data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, -1), 8),
+            ("ALIGN",      (1, 0), (-2, -1), "CENTER"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f4f8")]),
+            ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+            ("TOPPADDING",  (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(t)
+    else:
+        story.append(Paragraph("Brak wpisów samopoczucia.", normal_style))
+
+    story.append(Spacer(1, 0.5 * cm))
+
+    # ── Risk scores section ───────────────────────────────────────────
+    if prof.phone_e164:
+        story.append(Paragraph("Odczyty ryzyka (ostatnie 7 dni)", section_style))
+        profiles = list(prof.enabled_alerts) if prof.enabled_alerts else ["migraine"]
+        for profile_name in profiles:
+            rows_risk = readings_last_days(settings.WEATHERGUARD_DB, prof.phone_e164, profile_name, days=7, limit=50)
+            if rows_risk:
+                story.append(Paragraph(f"Profil: {profile_name}", ParagraphStyle("ph", parent=normal_style, fontSize=10, fontName="Helvetica-Bold", spaceBefore=8)))
+                risk_data = [["Data/czas (UTC)", "Wynik", "Baza", "Próg"]]
+                for r in rows_risk[:20]:
+                    risk_data.append([
+                        str(r.get("dt", ""))[:16],
+                        str(r.get("score", "—")),
+                        str(r.get("base_score", "—")),
+                        str(r.get("threshold", "—")),
+                    ])
+                rt = Table(risk_data, colWidths=[4.5 * cm, 2 * cm, 2 * cm, 2 * cm], repeatRows=1)
+                rt.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+                    ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE",   (0, 0), (-1, -1), 8),
+                    ("ALIGN",      (1, 0), (-1, -1), "CENTER"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f0f4f8")]),
+                    ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING",  (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]))
+                story.append(rt)
+
+    story.append(Spacer(1, 0.5 * cm))
+    story.append(Paragraph(
+        f"Raport wygenerowany automatycznie przez system Zdrowa. Data: {date.today().strftime('%d.%m.%Y')}.",
+        ParagraphStyle("footer", parent=normal_style, fontSize=8, textColor=colors.HexColor("#94a3b8")),
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+
+    response = HttpResponse(buf.read(), content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 # ── JSON API — trend charts ────────────────────────────────────────────────────

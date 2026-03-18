@@ -1,10 +1,16 @@
 <!doctype html>
 <html lang="pl">
 <script>
-  /* Apply saved theme ASAP to avoid flash of wrong theme */
+  /* Apply saved theme, font-size and contrast ASAP to avoid flash */
   (function(){
     var t=localStorage.getItem('zdrowa-theme')||'dark';
     document.documentElement.setAttribute('data-theme',t);
+    var fs=localStorage.getItem('zdrowa-fontsize')||'normal';
+    var fsMap={small:'14px',normal:'16px',large:'18px'};
+    document.documentElement.style.setProperty('--font-size-base', fsMap[fs]||'16px');
+    if(localStorage.getItem('zdrowa-contrast')==='high') {
+      document.documentElement.setAttribute('data-contrast','high');
+    }
   })();
 </script>
 <head>
@@ -86,6 +92,7 @@
       /* Typography */
       --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
       --mono: 'SF Mono', 'Fira Code', 'Courier New', monospace;
+      --font-size-base: 15px;
     }
 
     /* ═══ DESIGN TOKENS — LIGHT ══════════════════════════════════ */
@@ -136,7 +143,7 @@
       background-image: var(--bg-mesh);
       background-attachment: fixed;
       color: var(--text);
-      font-size: 15px;
+      font-size: var(--font-size-base, 15px);
       line-height: 1.6;
       min-height: 100vh;
       -webkit-font-smoothing: antialiased;
@@ -705,6 +712,91 @@
     .stack > *:nth-child(5) { animation-delay: .28s; }
     .stack > *:nth-child(6) { animation-delay: .34s; }
 
+    /* ═══ BOTTOM NAV (mobile only, < 768px) ═══════════════════════════ */
+    .bottom-nav { display: none; }
+    @media (max-width: 767px) {
+      .bottom-nav {
+        display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+        height: 60px; padding-bottom: env(safe-area-inset-bottom, 0px);
+        background: var(--surface, var(--bg)); border-top: 1px solid var(--border);
+        z-index: 200; justify-content: space-around; align-items: stretch;
+      }
+      .bnav-item {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        flex: 1; gap: 2px; text-decoration: none;
+        color: var(--muted); font-size: .65rem; font-weight: 500;
+        border: none; background: none; cursor: pointer; padding: 0;
+        position: relative; transition: color var(--t);
+      }
+      .bnav-item.active, .bnav-item:active { color: var(--accent-h); }
+      .bnav-icon { font-size: 1.35rem; line-height: 1; }
+      .bnav-badge {
+        position: absolute; top: 6px; right: calc(50% - 16px);
+        background: var(--red); color: #fff;
+        font-size: .55rem; font-weight: 700; border-radius: 99px;
+        padding: 1px 4px; min-width: 14px; text-align: center;
+        border: 2px solid var(--bg);
+      }
+      main.wrap { padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px)); }
+      .nav-toggle { display: none; }
+      .nav { display: none !important; }
+    }
+    /* Slide-up "Więcej" sheet */
+    .more-sheet-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 300;
+    }
+    .more-sheet-backdrop.open { display: block; }
+    .more-sheet {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface, var(--bg));
+      border-radius: 20px 20px 0 0; border-top: 1px solid var(--border);
+      padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+      z-index: 301; transform: translateY(100%);
+      transition: transform .25s cubic-bezier(.32,1,.23,1);
+    }
+    .more-sheet.open { transform: translateY(0); }
+    .more-sheet-handle {
+      width: 36px; height: 4px; border-radius: 99px;
+      background: var(--border); margin: 0 auto 16px;
+    }
+    .more-sheet-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 13px 4px; text-decoration: none; color: var(--text-2);
+      font-size: .95rem; font-weight: 500; border-bottom: 1px solid var(--border);
+    }
+    .more-sheet-item:last-child { border-bottom: none; }
+    .more-sheet-item:active { color: var(--accent-h); }
+    .more-sheet-icon { font-size: 1.2rem; width: 28px; text-align: center; }
+
+    /* ═══ SKELETON LOADING ════════════════════════════════════════════ */
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface-2, rgba(255,255,255,.05)) 25%, var(--border) 50%, var(--surface-2, rgba(255,255,255,.05)) 75%);
+      background-size: 800px 100%; animation: shimmer 1.5s infinite linear;
+      border-radius: var(--r-sm);
+    }
+    .skeleton-card { background: var(--glass); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; overflow: hidden; }
+    .skeleton-line { height: 12px; border-radius: 6px; margin-bottom: 10px; }
+    .skeleton-circle { width: 80px; height: 80px; border-radius: 50%; margin: 0 auto 16px; }
+
+    /* ═══ HIGH CONTRAST ═══════════════════════════════════════════════ */
+    [data-contrast="high"] {
+      --text: #ffffff; --text-2: #ffffff; --text-3: #eeeeee;
+      --bg: #000000; --surface: #0a0a0a; --surface-2: #111111;
+      --border: #555555; --muted: #cccccc; --dim: #aaaaaa;
+    }
+    [data-contrast="high"][data-theme="light"] {
+      --text: #000000; --text-2: #000000; --text-3: #111111;
+      --bg: #ffffff; --surface: #f8f8f8; --surface-2: #eeeeee;
+      --border: #333333; --muted: #444444; --dim: #555555;
+    }
+    [data-contrast="high"] .card { border-width: 2px; border-color: var(--border); }
+    [data-contrast="high"] .btn { border-width: 2px; font-weight: 800; }
+    [data-contrast="high"] .score-num { font-size: 2.8rem !important; font-weight: 900 !important; }
+
     /* ═══ DIVIDER ════════════════════════════════════════════════ */
     .divider { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 22px 0; }
     [data-theme="light"] .divider { border-top-color: rgba(0,0,0,.08); }
@@ -786,6 +878,36 @@
     </div>
   </header>
 
+  {% if request.user.is_authenticated %}
+  <nav class="bottom-nav" aria-label="Nawigacja główna">
+    <a href="/dashboard/" class="bnav-item {% if request.path == '/dashboard/' %}active{% endif %}">
+      <span class="bnav-icon">🏠</span><span>Dashboard</span>
+    </a>
+    <a href="/wellbeing/" class="bnav-item {% if '/wellbeing' in request.path %}active{% endif %}">
+      <span class="bnav-icon">😊</span><span>Samopoczucie</span>
+    </a>
+    <a href="/alerts/" class="bnav-item {% if '/alerts' in request.path %}active{% endif %}">
+      <span class="bnav-icon">🔔</span><span>Alerty</span>
+      {% if unread_count %}<span class="bnav-badge">{{ unread_count }}</span>{% endif %}
+    </a>
+    <a href="/raporty/" class="bnav-item {% if '/raporty' in request.path %}active{% endif %}">
+      <span class="bnav-icon">📊</span><span>Trendy</span>
+    </a>
+    <button class="bnav-item" onclick="openMoreSheet()" aria-label="Więcej opcji">
+      <span class="bnav-icon">⋯</span><span>Więcej</span>
+    </button>
+  </nav>
+  <div class="more-sheet-backdrop" id="more-sheet-backdrop" onclick="closeMoreSheet()"></div>
+  <div class="more-sheet" id="more-sheet">
+    <div class="more-sheet-handle"></div>
+    <a href="/data/" class="more-sheet-item"><span class="more-sheet-icon">📈</span>Dane</a>
+    <a href="/raporty/" class="more-sheet-item"><span class="more-sheet-icon">📋</span>Raporty</a>
+    <a href="/trends/" class="more-sheet-item"><span class="more-sheet-icon">📊</span>Trendy</a>
+    <a href="/settings/" class="more-sheet-item"><span class="more-sheet-icon">⚙️</span>Ustawienia</a>
+    <a href="/logout/" class="more-sheet-item" style="color:var(--red)"><span class="more-sheet-icon">🚪</span>Wyloguj</a>
+  </div>
+  {% endif %}
+
   <main class="wrap">
     {% if request.user.is_authenticated and vapid_public_key %}
     <div class="push-banner" id="push-banner" style="display:none">
@@ -820,6 +942,18 @@
         document.querySelector('.nav-toggle').setAttribute('aria-expanded', 'false');
       });
     });
+
+    /* ── More sheet ── */
+    window.openMoreSheet = function() {
+      document.getElementById('more-sheet-backdrop').classList.add('open');
+      document.getElementById('more-sheet').classList.add('open');
+    };
+    window.closeMoreSheet = function() {
+      var bd = document.getElementById('more-sheet-backdrop');
+      var sh = document.getElementById('more-sheet');
+      if (bd) bd.classList.remove('open');
+      if (sh) sh.classList.remove('open');
+    };
 
     /* ── Theme toggle ── */
     (function() {

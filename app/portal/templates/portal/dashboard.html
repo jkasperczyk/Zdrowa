@@ -106,6 +106,40 @@
     </div>
   {% endif %}
 
+  {# ── Ten tydzień — Weekly summary card ── #}
+  {% if weekly_stats and weekly_stats.avg_risk is not None %}
+  <div class="card" style="border-color:rgba(79,143,255,.2);background:linear-gradient(145deg,rgba(79,143,255,.04) 0%,transparent 80%)">
+    <div class="flex-between" style="margin-bottom:10px">
+      <p class="section-title" style="margin:0">📋 Ten tydzień</p>
+      <a href="{% url 'raporty' %}" class="small" style="color:var(--accent-h);text-decoration:none">Zobacz pełny raport →</a>
+    </div>
+    <div class="row-4" style="gap:8px">
+      <div style="text-align:center">
+        <div style="font-size:1.4rem;font-weight:800;color:var(--text)">{{ weekly_stats.avg_risk }}</div>
+        <div class="muted" style="font-size:.72rem">śr. ryzyko
+          {% if weekly_stats.vs_prev_pct is not None %}
+            <span style="color:{% if weekly_stats.vs_prev_pct < 0 %}var(--green){% else %}var(--amber){% endif %}">
+              {% if weekly_stats.vs_prev_pct > 0 %}↑{{ weekly_stats.vs_prev_pct }}%{% elif weekly_stats.vs_prev_pct < 0 %}↓{% with abs_pct=weekly_stats.vs_prev_pct %}{{ abs_pct|stringformat:"d"|slice:"1:" }}{% endwith %}%{% else %}→{% endif %}
+            </span>
+          {% endif %}
+        </div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text-2)">{{ weekly_stats.worst_day }}</div>
+        <div class="muted" style="font-size:.72rem">najgorszy dzień ({{ weekly_stats.worst_score }})</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.4rem;font-weight:800;color:var(--text)">{{ weekly_stats.logged_days }}/7</div>
+        <div class="muted" style="font-size:.72rem">zalogowanych dni</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:1.2rem;font-weight:700;color:var(--accent-h)">{% if prof.current_streak %}🔥 {{ prof.current_streak }}{% else %}—{% endif %}</div>
+        <div class="muted" style="font-size:.72rem">dni z rzędu</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Environmental factors ── #}
   {% with env=summary.env %}{% if env %}
     <div>
@@ -316,6 +350,11 @@
           <a href="{% url 'symptom_log' %}" class="btn xs" style="background:rgba(239,68,68,.15);color:var(--red);border-color:rgba(239,68,68,.3)">⚠ Zgłoś dolegliwość</a>
         </div>
       </div>
+      {% if prof.current_streak >= 3 %}
+      <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(255,140,0,.12);border:1px solid rgba(255,140,0,.25);border-radius:99px;padding:4px 12px;font-size:.82rem;font-weight:700;color:#ff8c00;margin-bottom:10px">
+        🔥 {{ prof.current_streak }} dni z rzędu!
+      </div>
+      {% endif %}
       {% if today_wb and today_wb.stress_1_10 is not None or today_wb and today_wb.exercise_1_10 is not None or today_wb and today_wb.sleep_quality_1_10 is not None %}
         {% if today_wb.stress_1_10 is not None %}
         <div class="wb-row">
@@ -402,13 +441,20 @@
 
 {% block scripts %}
 <script>
-  /* Animate circular gauge rings */
+  /* Animate circular gauge rings with counting number animation */
   var CIRC = 263.9;
   document.querySelectorAll('.score-ring-fill').forEach(function(el) {
     var score = parseInt(el.dataset.score) || 0;
-    var offset = CIRC * (1 - score / 100);
-    requestAnimationFrame(function() {
-      setTimeout(function() { el.style.strokeDashoffset = offset; }, 80);
+    var numEl = el.closest('.score-ring') ? el.closest('.score-ring').querySelector('.score-num') : null;
+    var start = null;
+    var duration = 900;
+    requestAnimationFrame(function animate(ts) {
+      if (!start) start = ts;
+      var progress = Math.min((ts - start) / duration, 1);
+      var ease = 1 - Math.pow(1 - progress, 3);
+      el.style.strokeDashoffset = CIRC * (1 - ease * score / 100);
+      if (numEl) numEl.textContent = Math.round(ease * score);
+      if (progress < 1) requestAnimationFrame(animate);
     });
   });
 </script>

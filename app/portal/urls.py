@@ -12,6 +12,7 @@ urlpatterns = [
     path("alerts/", views_wg.alerts, name="alerts"),
     path("data/", views_wg.data_view, name="data"),
     path("data/export/", views_wg.csv_export_view, name="csv_export"),
+    path("data/export/pdf/", views_wg.pdf_export_view, name="pdf_export"),
     path("trends/", views.trends, name="trends"),
     path("trends/file/<str:fname>/", views.trend_file, name="trend_file"),
     path("settings/", views_wg.settings_view, name="settings"),

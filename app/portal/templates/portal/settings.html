@@ -235,6 +235,79 @@
       {% endif %}
     </div>
 
+    {# ── 🎨 Wygląd i powiadomienia ── #}
+    <div class="card settings-card">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">🎨</span>
+        <div>
+          <div class="settings-section-title">Wygląd i powiadomienia</div>
+          <div class="settings-section-sub">Rozmiar tekstu, kontrast, przypomnienia</div>
+        </div>
+      </div>
+      <hr class="settings-divider">
+      <div style="margin-bottom:16px">
+        <label style="display:block;margin-bottom:8px;font-weight:600;font-size:.9rem">Rozmiar tekstu</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          {% for val, lbl in font_sizes %}
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 16px;border-radius:8px;border:1.5px solid {% if prof.font_size_preference == val %}var(--accent){% else %}var(--border){% endif %};background:{% if prof.font_size_preference == val %}var(--accent-dim){% else %}transparent{% endif %}">
+              <input type="radio" name="font_size_preference" value="{{ val }}" {% if prof.font_size_preference == val %}checked{% endif %} style="accent-color:var(--accent)">
+              <span style="font-size:.875rem;font-weight:500">{{ lbl }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+      <hr class="settings-divider">
+      <div style="margin-bottom:14px">
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;width:fit-content">
+          <input type="hidden" name="high_contrast" value="0">
+          <input type="checkbox" name="high_contrast" value="1" id="id_high_contrast"
+                 {% if prof.high_contrast %}checked{% endif %}
+                 style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+          <span style="font-weight:600;font-size:.95rem">Wysoki kontrast</span>
+        </label>
+        <p class="help" style="margin-top:6px">Zwiększa czytelność — czysty czarno-biały kontrast, grubsze ramki.</p>
+      </div>
+      <hr class="settings-divider">
+      <div>
+        <label style="display:flex;align-items:center;gap:12px;cursor:pointer;width:fit-content">
+          <input type="hidden" name="evening_reminder" value="0">
+          <input type="checkbox" name="evening_reminder" value="1" id="id_evening_reminder"
+                 {% if prof.evening_reminder %}checked{% endif %}
+                 style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer">
+          <span style="font-weight:600;font-size:.95rem">Wieczorne przypomnienie o samopoczuciu</span>
+        </label>
+        <p class="help" style="margin-top:6px">Push między 19:00–21:00, jeśli nie zalogowałeś/aś samopoczucia w danym dniu.</p>
+      </div>
+    </div>
+
+    {# ── 🏅 Osiągnięcia ── #}
+    {% if badges is not None %}
+    <div class="card settings-card">
+      <div class="settings-header">
+        <span class="settings-icon-wrap">🏅</span>
+        <div>
+          <div class="settings-section-title">Osiągnięcia</div>
+          <div class="settings-section-sub">Odznaki zdobyte za regularność i aktywność</div>
+        </div>
+      </div>
+      <hr class="settings-divider">
+      <div style="display:flex;flex-wrap:wrap;gap:10px">
+        {% for badge_def in all_badges %}
+          {% with earned=badges|get_item:badge_def.id %}
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1.5px solid {% if earned %}var(--accent){% else %}var(--border){% endif %};background:{% if earned %}var(--accent-dim){% else %}var(--surface-2,rgba(255,255,255,.04)){% endif %};opacity:{% if earned %}1{% else %}.5{% endif %};min-width:160px">
+            <span style="font-size:1.4rem">{{ badge_def.emoji }}</span>
+            <div>
+              <div style="font-weight:700;font-size:.875rem;color:{% if earned %}var(--accent-h){% else %}var(--muted){% endif %}">{{ badge_def.name }}</div>
+              <div style="font-size:.72rem;color:var(--muted)">{{ badge_def.desc }}</div>
+              {% if earned %}<div style="font-size:.65rem;color:var(--dim);margin-top:2px">{{ earned|slice:":10" }}</div>{% endif %}
+            </div>
+          </div>
+          {% endwith %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
     {# ── ⚠ Strefa niebezpieczna ── #}
     <div class="card settings-card" style="border-color:rgba(220,38,38,.3);background:linear-gradient(145deg,rgba(220,38,38,.04) 0%,transparent 60%);margin-top:8px">
       <div class="settings-header">
@@ -300,5 +373,28 @@
   toggleCycle();
   genderSel.addEventListener('change', toggleCycle);
 })();
+
+// Sync font size preference to localStorage on change
+document.querySelectorAll('input[name="font_size_preference"]').forEach(function(radio) {
+  radio.addEventListener('change', function() {
+    var fsMap = {small:'14px', normal:'16px', large:'18px'};
+    localStorage.setItem('zdrowa-fontsize', this.value);
+    document.documentElement.style.setProperty('--font-size-base', fsMap[this.value] || '16px');
+  });
+});
+
+// Sync high contrast to localStorage on change
+var hcCb = document.getElementById('id_high_contrast');
+if (hcCb) {
+  hcCb.addEventListener('change', function() {
+    if (this.checked) {
+      localStorage.setItem('zdrowa-contrast', 'high');
+      document.documentElement.setAttribute('data-contrast', 'high');
+    } else {
+      localStorage.removeItem('zdrowa-contrast');
+      document.documentElement.removeAttribute('data-contrast');
+    }
+  });
+}
 </script>
 {% endblock %}

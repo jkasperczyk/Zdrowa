@@ -8,6 +8,11 @@ class UserProfile(models.Model):
         ("male", "Mężczyzna"),
         ("other", "Inne"),
     ]
+    FONT_SIZE_CHOICES = [
+        ("small", "Mały (14px)"),
+        ("normal", "Normalny (16px)"),
+        ("large", "Duży (18px)"),
+    ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
     phone_e164 = models.CharField(max_length=32, blank=True, default="", help_text="E.164, np. +4879...")
@@ -34,6 +39,18 @@ class UserProfile(models.Model):
     failed_login_count = models.IntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
 
+    # Streaks
+    current_streak = models.IntegerField(default=0)
+    longest_streak = models.IntegerField(default=0)
+    last_log_date = models.DateField(null=True, blank=True)
+
+    # Display preferences
+    font_size_preference = models.CharField(max_length=10, choices=FONT_SIZE_CHOICES, default="normal")
+    high_contrast = models.BooleanField(default=False)
+
+    # Notifications
+    evening_reminder = models.BooleanField(default=True, help_text="Wieczorne przypomnienie o logowaniu samopoczucia")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -49,6 +66,7 @@ class DailyWellbeing(models.Model):
     sleep_quality_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
     hydration_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
     headache_1_10 = models.PositiveSmallIntegerField(null=True, blank=True)
+    daily_note = models.TextField(blank=True, default="", help_text="Notatka dnia (max 500 znaków)")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

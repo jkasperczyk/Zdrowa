@@ -8,7 +8,10 @@
       <p class="muted small">Odczyty WeatherGuard i dane samopoczucia — ostatnie 7 dni.</p>
     </div>
     {% if prof.phone_e164 %}
-      <a href="{% url 'csv_export' %}?profile={{ selected_profile }}" class="btn sm secondary" style="white-space:nowrap">Eksport CSV</a>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="{% url 'csv_export' %}?profile={{ selected_profile }}" class="btn sm secondary" style="white-space:nowrap">Eksport CSV</a>
+        <a href="{% url 'pdf_export' %}" class="btn sm secondary" style="white-space:nowrap">📄 Eksport PDF</a>
+      </div>
     {% endif %}
   </div>
 

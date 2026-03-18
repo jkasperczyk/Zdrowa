@@ -1,118 +1,154 @@
 {% extends "portal/base.html" %}
 {% block extra_css %}
-.wb-slider-card { transition: border-color var(--t-slow); }
-.slider-wrap { padding: 12px 0 4px; }
-.slider-wrap input[type=range] { margin-bottom: 12px; }
+.emoji-group { display:flex;gap:8px;flex-wrap:nowrap;justify-content:space-between;margin:10px 0 6px; }
+.emoji-btn {
+  flex:1; min-width:44px; min-height:52px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  font-size:1.7rem; line-height:1.1; border-radius:12px; cursor:pointer;
+  border:2px solid var(--border); background:transparent; color:inherit;
+  transition:border-color var(--t),background var(--t),transform .1s;
+  padding:6px 4px;
+}
+.emoji-btn.selected {
+  border-color:var(--accent); background:var(--accent-dim);
+  transform:scale(1.08);
+  box-shadow:0 0 0 3px rgba(79,143,255,.18);
+}
+.emoji-btn span.emoji-label { font-size:.52rem; color:var(--muted); margin-top:3px; font-weight:500; }
+.wb-value-display { font-size:.8rem;color:var(--muted);text-align:center;height:18px;margin-bottom:4px; }
+.wb-emoji-card { transition: border-color var(--t-slow); }
 {% endblock %}
 {% block content %}
 <div class="stack">
   <div class="flex-between">
     <div>
       <h1 style="font-size:1.6rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.3rem">Samopoczucie</h1>
-      <p class="muted small">Oceny z dziś ({{ today }}) są brane pod uwagę przy obliczaniu ryzyka.</p>
+      <p class="muted small">Dziś ({{ today }}) — dotknij emoji, aby wybrać</p>
     </div>
   </div>
 
-  <form method="post">
+  {% if prof.current_streak >= 1 %}
+  <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(255,140,0,.1);border:1px solid rgba(255,140,0,.22);border-radius:99px;padding:6px 16px;font-weight:700;color:#ff8c00;width:fit-content">
+    🔥 Seria: {{ prof.current_streak }} {% if prof.current_streak == 1 %}dzień{% elif prof.current_streak < 5 %}dni{% else %}dni{% endif %}
+    {% if prof.longest_streak > 1 %}<span style="font-weight:400;color:var(--muted);font-size:.82rem">· rekord: {{ prof.longest_streak }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="msg {% if message.tags %}{{ message.tags }}{% endif %}">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" id="wb-form">
     {% csrf_token %}
+
+    {# Hidden inputs storing selected values #}
+    <input type="hidden" name="stress_1_10" id="stress_val" value="{{ entry.stress_1_10|default:'' }}">
+    <input type="hidden" name="exercise_1_10" id="exercise_val" value="{{ entry.exercise_1_10|default:'' }}">
+    <input type="hidden" name="sleep_quality_1_10" id="sleep_val" value="{{ entry.sleep_quality_1_10|default:'' }}">
+    <input type="hidden" name="hydration_1_10" id="hydration_val" value="{{ entry.hydration_1_10|default:'' }}">
+    <input type="hidden" name="headache_1_10" id="headache_val" value="{{ entry.headache_1_10|default:'' }}">
+
     <div class="row">
 
-      <div class="card wb-slider-card" id="stress-card">
-        <h4>Poziom stresu</h4>
-        <p class="muted small">1 = brak stresu &nbsp;/&nbsp; 10 = bardzo wysoki</p>
-        <div class="slider-wrap">
-          <input type="range" id="stress_1_10" name="stress_1_10"
-                 min="1" max="10" step="1"
-                 value="{{ entry.stress_1_10|default:5 }}"
-                 oninput="updateSlider('stress', this.value)">
+      {# ── Stres ── #}
+      <div class="card wb-emoji-card" id="stress-card">
+        <h4>😰 Poziom stresu</h4>
+        <p class="muted small">1=brak / 10=ekstremalny</p>
+        <div class="emoji-group" data-group="stress">
+          <button type="button" class="emoji-btn" data-val="2" onclick="selectEmoji('stress',2)">😌<span class="emoji-label">Spokój</span></button>
+          <button type="button" class="emoji-btn" data-val="4" onclick="selectEmoji('stress',4)">😊<span class="emoji-label">Lekki</span></button>
+          <button type="button" class="emoji-btn" data-val="6" onclick="selectEmoji('stress',6)">😐<span class="emoji-label">Umiark.</span></button>
+          <button type="button" class="emoji-btn" data-val="8" onclick="selectEmoji('stress',8)">😟<span class="emoji-label">Wysoki</span></button>
+          <button type="button" class="emoji-btn" data-val="10" onclick="selectEmoji('stress',10)">😫<span class="emoji-label">Ekstrem.</span></button>
         </div>
-        <div class="slider-display">
-          <span class="slider-num" id="stress_val">{{ entry.stress_1_10|default:5 }}</span>
-          <span class="slider-unit">/10</span>
-        </div>
-        <p class="dim small text-center" id="stress_label" style="margin-top:6px"></p>
+        <div class="wb-value-display" id="stress-display"></div>
       </div>
 
-      <div class="card wb-slider-card" id="exercise-card">
-        <h4>Aktywność fizyczna</h4>
-        <p class="muted small">1 = brak aktywności &nbsp;/&nbsp; 10 = intensywna</p>
-        <div class="slider-wrap">
-          <input type="range" id="exercise_1_10" name="exercise_1_10"
-                 min="1" max="10" step="1"
-                 value="{{ entry.exercise_1_10|default:5 }}"
-                 oninput="updateSlider('exercise', this.value)">
+      {# ── Aktywność ── #}
+      <div class="card wb-emoji-card" id="exercise-card">
+        <h4>🏃 Aktywność fizyczna</h4>
+        <p class="muted small">1=brak / 10=intensywna</p>
+        <div class="emoji-group" data-group="exercise">
+          <button type="button" class="emoji-btn" data-val="2" onclick="selectEmoji('exercise',2)">🛋️<span class="emoji-label">Brak</span></button>
+          <button type="button" class="emoji-btn" data-val="4" onclick="selectEmoji('exercise',4)">🚶<span class="emoji-label">Spacer</span></button>
+          <button type="button" class="emoji-btn" data-val="6" onclick="selectEmoji('exercise',6)">🏃<span class="emoji-label">Bieg</span></button>
+          <button type="button" class="emoji-btn" data-val="8" onclick="selectEmoji('exercise',8)">💪<span class="emoji-label">Trening</span></button>
+          <button type="button" class="emoji-btn" data-val="10" onclick="selectEmoji('exercise',10)">🏆<span class="emoji-label">Max</span></button>
         </div>
-        <div class="slider-display">
-          <span class="slider-num" id="exercise_val">{{ entry.exercise_1_10|default:5 }}</span>
-          <span class="slider-unit">/10</span>
-        </div>
-        <p class="dim small text-center" id="exercise_label" style="margin-top:6px"></p>
+        <div class="wb-value-display" id="exercise-display"></div>
       </div>
 
-      <div class="card wb-slider-card" id="sleep-card">
-        <h4>Jakość snu</h4>
-        <p class="muted small">1 = bardzo zły sen &nbsp;/&nbsp; 10 = świetny sen</p>
-        <div class="slider-wrap">
-          <input type="range" id="sleep_quality_1_10" name="sleep_quality_1_10"
-                 min="1" max="10" step="1"
-                 value="{{ entry.sleep_quality_1_10|default:7 }}"
-                 oninput="updateSlider('sleep', this.value)">
+      {# ── Sen ── #}
+      <div class="card wb-emoji-card" id="sleep-card">
+        <h4>🌙 Jakość snu</h4>
+        <p class="muted small">1=zły / 10=doskonały</p>
+        <div class="emoji-group" data-group="sleep">
+          <button type="button" class="emoji-btn" data-val="2" onclick="selectEmoji('sleep',2)">😵<span class="emoji-label">Okropny</span></button>
+          <button type="button" class="emoji-btn" data-val="4" onclick="selectEmoji('sleep',4)">😴<span class="emoji-label">Słaby</span></button>
+          <button type="button" class="emoji-btn" data-val="6" onclick="selectEmoji('sleep',6)">😐<span class="emoji-label">Przeciętny</span></button>
+          <button type="button" class="emoji-btn" data-val="8" onclick="selectEmoji('sleep',8)">😊<span class="emoji-label">Dobry</span></button>
+          <button type="button" class="emoji-btn" data-val="10" onclick="selectEmoji('sleep',10)">🌟<span class="emoji-label">Doskon.</span></button>
         </div>
-        <div class="slider-display">
-          <span class="slider-num" id="sleep_val">{{ entry.sleep_quality_1_10|default:7 }}</span>
-          <span class="slider-unit">/10</span>
-        </div>
-        <p class="dim small text-center" id="sleep_label" style="margin-top:6px"></p>
+        <div class="wb-value-display" id="sleep-display"></div>
       </div>
 
-      <div class="card wb-slider-card" id="hydration-card">
-        <h4>Nawodnienie</h4>
-        <p class="muted small">1 = prawie nic nie piłem/am &nbsp;/&nbsp; 10 = bardzo dobrze nawodniony/a</p>
-        <div class="slider-wrap">
-          <input type="range" id="hydration_1_10" name="hydration_1_10"
-                 min="1" max="10" step="1"
-                 value="{{ entry.hydration_1_10|default:7 }}"
-                 oninput="updateSlider('hydration', this.value)">
+      {# ── Nawodnienie ── #}
+      <div class="card wb-emoji-card" id="hydration-card">
+        <h4>💧 Nawodnienie</h4>
+        <p class="muted small">1=brak / 10=idealne</p>
+        <div class="emoji-group" data-group="hydration">
+          <button type="button" class="emoji-btn" data-val="2" onclick="selectEmoji('hydration',2)">🏜️<span class="emoji-label">Kryt.</span></button>
+          <button type="button" class="emoji-btn" data-val="4" onclick="selectEmoji('hydration',4)">💧<span class="emoji-label">Mało</span></button>
+          <button type="button" class="emoji-btn" data-val="6" onclick="selectEmoji('hydration',6)">💧💧<span class="emoji-label">Ok</span></button>
+          <button type="button" class="emoji-btn" data-val="8" onclick="selectEmoji('hydration',8)">🚰<span class="emoji-label">Dobrze</span></button>
+          <button type="button" class="emoji-btn" data-val="10" onclick="selectEmoji('hydration',10)">🌊<span class="emoji-label">Idealne</span></button>
         </div>
-        <div class="slider-display">
-          <span class="slider-num" id="hydration_val">{{ entry.hydration_1_10|default:7 }}</span>
-          <span class="slider-unit">/10</span>
-        </div>
-        <p class="dim small text-center" id="hydration_label" style="margin-top:6px"></p>
+        <div class="wb-value-display" id="hydration-display"></div>
       </div>
 
-      <div class="card wb-slider-card" id="headache-card">
-        <h4>Ból głowy</h4>
-        <p class="muted small">0 = brak bólu &nbsp;/&nbsp; 10 = silny ból</p>
-        <div class="slider-wrap">
-          <input type="range" id="headache_1_10" name="headache_1_10"
-                 min="0" max="10" step="1"
-                 value="{{ entry.headache_1_10|default:0 }}"
-                 oninput="updateSlider('headache', this.value)">
+      {# ── Ból głowy ── #}
+      <div class="card wb-emoji-card" id="headache-card">
+        <h4>🤕 Ból głowy</h4>
+        <p class="muted small">0=brak / 10=silny</p>
+        <div class="emoji-group" data-group="headache">
+          <button type="button" class="emoji-btn" data-val="0" onclick="selectEmoji('headache',0)">✅<span class="emoji-label">Brak</span></button>
+          <button type="button" class="emoji-btn" data-val="2" onclick="selectEmoji('headache',2)">😐<span class="emoji-label">Lekki</span></button>
+          <button type="button" class="emoji-btn" data-val="5" onclick="selectEmoji('headache',5)">😣<span class="emoji-label">Umiark.</span></button>
+          <button type="button" class="emoji-btn" data-val="7" onclick="selectEmoji('headache',7)">🤕<span class="emoji-label">Silny</span></button>
+          <button type="button" class="emoji-btn" data-val="10" onclick="selectEmoji('headache',10)">🤯<span class="emoji-label">Ekstrem.</span></button>
         </div>
-        <div class="slider-display">
-          <span class="slider-num" id="headache_val">{{ entry.headache_1_10|default:0 }}</span>
-          <span class="slider-unit">/10</span>
-        </div>
-        <p class="dim small text-center" id="headache_label" style="margin-top:6px"></p>
+        <div class="wb-value-display" id="headache-display"></div>
       </div>
 
     </div>
 
-    <div class="actions mt-2" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-      <button type="submit" class="btn">Zapisz samopoczucie</button>
+    {# ── Notatka dnia ── #}
+    <div class="card" style="margin-top:0">
+      <h4 style="margin-bottom:8px">📝 Notatka dnia <span class="muted small">(opcjonalnie)</span></h4>
+      <textarea name="daily_note" id="daily_note" maxlength="500"
+                placeholder="Co jadłeś, jak spałeś, co robiłeś..."
+                style="width:100%;min-height:80px;resize:vertical;background:var(--surface-2,rgba(255,255,255,.04));border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:.9rem;font-family:inherit"
+                oninput="document.getElementById('note-counter').textContent=(500-this.value.length)+' znaków pozostało'">{{ entry.daily_note|default:"" }}</textarea>
+      <div class="muted small" id="note-counter" style="margin-top:4px;text-align:right">500 znaków pozostało</div>
+    </div>
+
+    <div class="actions mt-2">
+      <button type="submit" class="btn" style="padding:14px 32px;font-size:1rem;font-weight:700">💾 Zapisz samopoczucie</button>
       <a href="{% url 'symptom_log' %}" class="btn" style="background:rgba(239,68,68,.15);color:var(--red);border:1px solid rgba(239,68,68,.3)">⚠ Zgłoś dolegliwość</a>
     </div>
   </form>
 
   {% if entry.stress_1_10 is not None or entry.exercise_1_10 is not None or entry.sleep_quality_1_10 is not None %}
     <div class="card">
-      <p class="muted small">Ostatni zapis dzisiaj:
-        {% if entry.stress_1_10 is not None %}stres <b style="color:var(--text-2)">{{ entry.stress_1_10 }}/10</b>{% endif %}
-        {% if entry.exercise_1_10 is not None %}&nbsp;· aktywność <b style="color:var(--text-2)">{{ entry.exercise_1_10 }}/10</b>{% endif %}
-        {% if entry.sleep_quality_1_10 is not None %}&nbsp;· sen <b style="color:var(--text-2)">{{ entry.sleep_quality_1_10 }}/10</b>{% endif %}
-        {% if entry.hydration_1_10 is not None %}&nbsp;· nawodnienie <b style="color:var(--text-2)">{{ entry.hydration_1_10 }}/10</b>{% endif %}
-        {% if entry.headache_1_10 is not None %}&nbsp;· ból głowy <b style="color:var(--text-2)">{{ entry.headache_1_10 }}/10</b>{% endif %}
+      <p class="muted small">Ostatni zapis:
+        {% if entry.stress_1_10 is not None %}stres <b>{{ entry.stress_1_10 }}/10</b>{% endif %}
+        {% if entry.exercise_1_10 is not None %} · aktywność <b>{{ entry.exercise_1_10 }}/10</b>{% endif %}
+        {% if entry.sleep_quality_1_10 is not None %} · sen <b>{{ entry.sleep_quality_1_10 }}/10</b>{% endif %}
+        {% if entry.hydration_1_10 is not None %} · nawodnienie <b>{{ entry.hydration_1_10 }}/10</b>{% endif %}
+        {% if entry.headache_1_10 is not None %} · ból głowy <b>{{ entry.headache_1_10 }}/10</b>{% endif %}
+        {% if entry.daily_note %}<br><span style="color:var(--text-2)">"{{ entry.daily_note|truncatechars:80 }}"</span>{% endif %}
       </p>
     </div>
   {% endif %}
@@ -120,53 +156,53 @@
 {% endblock %}
 {% block scripts %}
 <script>
-const stressLabels    = ['','Spokój','Spokój','Lekki','Umiarkowany','Umiarkowany','Podwyższony','Wysoki','Wysoki','Bardzo wysoki','Ekstremalny'];
-const exerciseLabels  = ['','Brak','Minimalna','Lekka','Lekka','Umiarkowana','Umiarkowana','Aktywna','Aktywna','Intensywna','Maksymalna'];
-const sleepLabels     = ['','Okropny','Bardzo zły','Zły','Słaby','Przeciętny','Dość dobry','Dobry','Dobry','Bardzo dobry','Doskonały'];
-const hydrationLabels = ['','Krytyczne','Bardzo słabe','Słabe','Poniżej normy','Przeciętne','Dobre','Dobre','Bardzo dobre','Doskonałe','Idealne'];
-const headacheLabels  = ['Brak','Minimalny','Minimalny','Lekki','Lekki','Umiarkowany','Umiarkowany','Silny','Silny','Bardzo silny','Ekstremalny'];
-
-function sliderColor(type, v) {
-  v = parseInt(v);
-  if (type === 'stress') {
-    if (v >= 8) return 'var(--red)';
-    if (v >= 6) return 'var(--amber)';
-    return 'var(--accent-h)';
-  } else if (type === 'exercise' || type === 'sleep' || type === 'hydration') {
-    if (v >= 7) return 'var(--green)';
-    if (v <= 3) return 'var(--red)';
-    return 'var(--accent-h)';
-  } else if (type === 'headache') {
-    if (v >= 7) return 'var(--red)';
-    if (v >= 4) return 'var(--amber)';
-    return 'var(--accent-h)';
-  }
-  return 'var(--accent-h)';
-}
-
-const labelMap = {
-  stress: stressLabels, exercise: exerciseLabels,
-  sleep: sleepLabels, hydration: hydrationLabels, headache: headacheLabels
+var wbValues = {
+  stress: {{ entry.stress_1_10|default:"null" }},
+  exercise: {{ entry.exercise_1_10|default:"null" }},
+  sleep: {{ entry.sleep_quality_1_10|default:"null" }},
+  hydration: {{ entry.hydration_1_10|default:"null" }},
+  headache: {{ entry.headache_1_10|default:"null" }},
 };
 
-function updateSlider(type, v) {
-  const col  = sliderColor(type, v);
-  const num  = document.getElementById(type + '_val');
-  const lbl  = document.getElementById(type + '_label');
-  const card = document.getElementById(type + '-card');
-  const idMap = {stress:'stress_1_10', exercise:'exercise_1_10', sleep:'sleep_quality_1_10', hydration:'hydration_1_10', headache:'headache_1_10'};
-  num.textContent = v;
-  num.style.color = col;
-  lbl.textContent = (labelMap[type] || [])[parseInt(v)] || '';
-  card.style.setProperty('--accent-color', col);
-  document.getElementById(idMap[type]).style.accentColor = col;
+var groupInputMap = {stress:'stress_val',exercise:'exercise_val',sleep:'sleep_val',hydration:'hydration_val',headache:'headache_val'};
+var displayLabels = {
+  stress: {2:'Spokój (2/10)',4:'Lekki (4/10)',6:'Umiarkowany (6/10)',8:'Wysoki (8/10)',10:'Ekstremalny (10/10)'},
+  exercise: {2:'Brak (2/10)',4:'Spacer (4/10)',6:'Bieg (6/10)',8:'Trening (8/10)',10:'Maksymalny (10/10)'},
+  sleep: {2:'Okropny (2/10)',4:'Słaby (4/10)',6:'Przeciętny (6/10)',8:'Dobry (8/10)',10:'Doskonały (10/10)'},
+  hydration: {2:'Krytyczne (2/10)',4:'Mało (4/10)',6:'Ok (6/10)',8:'Dobrze (8/10)',10:'Idealne (10/10)'},
+  headache: {0:'Brak (0/10)',2:'Lekki (2/10)',5:'Umiarkowany (5/10)',7:'Silny (7/10)',10:'Ekstremalny (10/10)'},
+};
+
+function selectEmoji(group, val) {
+  var input = document.getElementById(groupInputMap[group]);
+  var current = input.value === '' ? null : parseInt(input.value);
+  if (current === val) {
+    // Deselect on second tap
+    input.value = '';
+    document.querySelectorAll('[data-group="'+group+'"] .emoji-btn').forEach(function(b){b.classList.remove('selected');});
+    document.getElementById(group+'-display').textContent = '';
+    return;
+  }
+  input.value = val;
+  document.querySelectorAll('[data-group="'+group+'"] .emoji-btn').forEach(function(b){
+    b.classList.toggle('selected', parseInt(b.dataset.val) === val);
+  });
+  document.getElementById(group+'-display').textContent = (displayLabels[group]||{})[val] || val+'/10';
 }
 
-// Init on load
-['stress','exercise','sleep','hydration','headache'].forEach(function(t) {
-  const idMap = {stress:'stress_1_10', exercise:'exercise_1_10', sleep:'sleep_quality_1_10', hydration:'hydration_1_10', headache:'headache_1_10'};
-  const el = document.getElementById(idMap[t]);
-  if (el) updateSlider(t, el.value);
-});
+// Init selected state from server values
+(function() {
+  ['stress','exercise','sleep','hydration','headache'].forEach(function(g) {
+    var v = wbValues[g];
+    if (v !== null && v !== undefined) {
+      selectEmoji(g, v);
+    }
+  });
+  // Update note counter
+  var noteEl = document.getElementById('daily_note');
+  if (noteEl && noteEl.value) {
+    document.getElementById('note-counter').textContent = (500 - noteEl.value.length) + ' znaków pozostało';
+  }
+})();
 </script>
 {% endblock %}

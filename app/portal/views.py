@@ -31,6 +31,7 @@ from .wg_sources import (
     all_users_latest_scores, users_last_scores, recent_alerts_all, batch_recent_alerts,
     save_push_subscription, delete_push_subscription, process_alerts_queue,
     forecast_alerts_for_user, generate_daily_tip, get_ai_risk_summary,
+    get_weekly_stats,
 )
 from .forms import AdminCreateUserForm, AdminEditUserForm, ImportUsersForm, DeleteUserForm, gen_password
 from .users_import import parse_users_txt, dedupe_by_phone
@@ -121,6 +122,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
     today_wb = None
     forecast_data = []
     tip = None
+    weekly_stats: dict = {}
 
     if prof.phone_e164:
         profiles = list(prof.enabled_alerts) if prof.enabled_alerts else ["migraine", "allergy", "heart"]
@@ -140,6 +142,10 @@ def dashboard(request: HttpRequest) -> HttpResponse:
                 _pdata.get("ts", 0),
                 cache_only=True,
             )
+        try:
+            weekly_stats = get_weekly_stats(settings.WEATHERGUARD_DB, prof.phone_e164, profiles)
+        except Exception:
+            weekly_stats = {}
 
     try:
         today_wb = DailyWellbeing.objects.get(user=request.user, day=date.today())
@@ -161,6 +167,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
         "show_onboarding": show_onboarding,
         "forecast_data": forecast_data,
         "tip": tip,
+        "weekly_stats": weekly_stats,
     })
 
 @login_required

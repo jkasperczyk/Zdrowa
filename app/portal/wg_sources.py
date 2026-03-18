@@ -356,6 +356,7 @@ def write_wellbeing(
     sleep_quality_1_10: Optional[int] = None,
     hydration_1_10: Optional[int] = None,
     headache_1_10: Optional[int] = None,
+    notes: Optional[str] = None,
 ) -> bool:
     """Upsert a user's daily wellbeing into the wellbeing table in feedback.db.
     Creates the table if it doesn't exist yet (Health_Guard may not have run yet)."""
@@ -384,20 +385,23 @@ def write_wellbeing(
             for col in ("sleep_quality_1_10", "hydration_1_10", "headache_1_10"):
                 if col not in existing_cols:
                     c.execute(f"ALTER TABLE wellbeing ADD COLUMN {col} INTEGER;")
+            if "notes" not in existing_cols:
+                c.execute("ALTER TABLE wellbeing ADD COLUMN notes TEXT;")
 
             c.execute(
                 """
-                INSERT INTO wellbeing(phone, day, stress_1_10, exercise_1_10, sleep_quality_1_10, hydration_1_10, headache_1_10, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO wellbeing(phone, day, stress_1_10, exercise_1_10, sleep_quality_1_10, hydration_1_10, headache_1_10, notes, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(phone, day) DO UPDATE SET
                     stress_1_10        = excluded.stress_1_10,
                     exercise_1_10      = excluded.exercise_1_10,
                     sleep_quality_1_10 = excluded.sleep_quality_1_10,
                     hydration_1_10     = excluded.hydration_1_10,
                     headache_1_10      = excluded.headache_1_10,
+                    notes              = excluded.notes,
                     updated_at         = excluded.updated_at
                 """,
-                (phone, day, stress_1_10, exercise_1_10, sleep_quality_1_10, hydration_1_10, headache_1_10, now),
+                (phone, day, stress_1_10, exercise_1_10, sleep_quality_1_10, hydration_1_10, headache_1_10, notes, now),
             )
             c.commit()
         finally:
@@ -1545,3 +1549,255 @@ def mark_alerts_read(db_path: str, phone: str) -> None:
         pass
     finally:
         c.close()
+
+
+# ── Badges ────────────────────────────────────────────────────────────────────
+
+def _ensure_badges_table(c: sqlite3.Connection) -> None:
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS user_badges (
+            phone TEXT NOT NULL,
+            badge_id TEXT NOT NULL,
+            earned_at TEXT NOT NULL,
+            PRIMARY KEY (phone, badge_id)
+        )
+    """)
+    c.commit()
+
+
+def award_badge(db_path: str, phone: str, badge_id: str) -> bool:
+    """Award a badge to a user if not already earned. Returns True if newly awarded."""
+    if not db_path or not os.path.exists(db_path):
+        return False
+    try:
+        now = datetime.now(tz=timezone.utc).isoformat()
+        c = sqlite3.connect(db_path)
+        try:
+            c.execute("PRAGMA journal_mode=WAL;")
+            _ensure_badges_table(c)
+            existing = c.execute(
+                "SELECT 1 FROM user_badges WHERE phone=? AND badge_id=?", (phone, badge_id)
+            ).fetchone()
+            if existing:
+                return False
+            c.execute(
+                "INSERT INTO user_badges (phone, badge_id, earned_at) VALUES (?,?,?)",
+                (phone, badge_id, now),
+            )
+            c.commit()
+            return True
+        finally:
+            c.close()
+    except Exception:
+        return False
+
+
+def get_user_badges(db_path: str, phone: str) -> List[Dict[str, Any]]:
+    """Return list of earned badges for a user."""
+    if not db_path or not os.path.exists(db_path):
+        return []
+    try:
+        c = _connect_feedback(db_path)
+        try:
+            if not _table_exists(c, "user_badges"):
+                return []
+            rows = c.execute(
+                "SELECT badge_id, earned_at FROM user_badges WHERE phone=? ORDER BY earned_at ASC",
+                (phone,),
+            ).fetchall()
+            return [{"badge_id": r[0], "earned_at": r[1]} for r in rows]
+        finally:
+            c.close()
+    except Exception:
+        return []
+
+
+# ── Weekly stats ──────────────────────────────────────────────────────────────
+
+def get_weekly_stats(db_path: str, phone: str, profiles: List[str]) -> Dict[str, Any]:
+    """Compute compact weekly stats for dashboard summary card.
+    Returns: avg_risk, worst_day_label, worst_score, logged_days, week_vs_prev_pct
+    """
+    empty: Dict[str, Any] = {"avg_risk": None, "worst_day": None, "worst_score": None, "logged_days": 0, "vs_prev_pct": None}
+    if not db_path or not os.path.exists(db_path) or not profiles:
+        return empty
+    from datetime import timedelta as _td
+    now = datetime.now(tz=timezone.utc)
+    week_start = int((now - _td(days=7)).timestamp())
+    prev_start = int((now - _td(days=14)).timestamp())
+
+    c = _connect_feedback(db_path)
+    try:
+        if not _table_exists(c, "readings"):
+            return empty
+        # This week scores
+        rows = c.execute(
+            "SELECT ts, score FROM readings WHERE phone=? AND ts>=? ORDER BY ts ASC",
+            (phone, week_start),
+        ).fetchall()
+        if not rows:
+            return empty
+        day_scores: Dict[str, float] = {}
+        for r in rows:
+            day = datetime.fromtimestamp(int(r[0]), tz=timezone.utc).strftime("%Y-%m-%d")
+            day_scores[day] = max(day_scores.get(day, 0), float(r[1] or 0))
+        if not day_scores:
+            return empty
+        avg_risk = int(round(sum(day_scores.values()) / len(day_scores)))
+        worst_day, worst_score = max(day_scores.items(), key=lambda x: x[1])
+        # Convert worst_day to Polish weekday
+        from datetime import date as _date
+        try:
+            wd_date = _date.fromisoformat(worst_day)
+            pl_days = ["Poniedziałek", "Wtorek", "Środa", "Czwartek", "Piątek", "Sobota", "Niedziela"]
+            worst_day_label = pl_days[wd_date.weekday()]
+        except Exception:
+            worst_day_label = worst_day
+
+        # Count logged days (wellbeing entries this week)
+        logged_days = 0
+        if _table_exists(c, "wellbeing"):
+            since_day = (now - _td(days=7)).strftime("%Y-%m-%d")
+            row = c.execute(
+                "SELECT COUNT(DISTINCT day) FROM wellbeing WHERE phone=? AND day>=?",
+                (phone, since_day),
+            ).fetchone()
+            logged_days = int(row[0]) if row else 0
+
+        # Previous week average for comparison
+        vs_prev_pct = None
+        prev_rows = c.execute(
+            "SELECT ts, score FROM readings WHERE phone=? AND ts>=? AND ts<? ORDER BY ts ASC",
+            (phone, prev_start, week_start),
+        ).fetchall()
+        if prev_rows:
+            prev_day_scores: Dict[str, float] = {}
+            for r in prev_rows:
+                day = datetime.fromtimestamp(int(r[0]), tz=timezone.utc).strftime("%Y-%m-%d")
+                prev_day_scores[day] = max(prev_day_scores.get(day, 0), float(r[1] or 0))
+            if prev_day_scores:
+                prev_avg = sum(prev_day_scores.values()) / len(prev_day_scores)
+                if prev_avg > 0:
+                    vs_prev_pct = int(round((avg_risk - prev_avg) / prev_avg * 100))
+
+        return {
+            "avg_risk": avg_risk,
+            "worst_day": worst_day_label,
+            "worst_score": int(worst_score),
+            "logged_days": logged_days,
+            "vs_prev_pct": vs_prev_pct,
+        }
+    except Exception:
+        return empty
+    finally:
+        c.close()
+
+
+# ── Evening push reminders ─────────────────────────────────────────────────────
+
+def check_and_queue_evening_reminders(
+    db_path: str,
+    vapid_private_key: str,
+    vapid_public_key: str,
+    vapid_subject: str,
+) -> int:
+    """Check if users should receive evening wellbeing reminders. Returns count sent."""
+    if not db_path or not os.path.exists(db_path) or not vapid_private_key:
+        return 0
+    try:
+        from pywebpush import webpush, WebPushException  # type: ignore
+    except ImportError:
+        return 0
+    import json as _json
+
+    now = datetime.now(tz=timezone.utc)
+    hour = now.hour
+    # Only run between 19:00 and 21:00 UTC (approximate local evening)
+    if not (19 <= hour <= 21):
+        return 0
+
+    today = now.strftime("%Y-%m-%d")
+    sent = 0
+
+    c = sqlite3.connect(db_path)
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        # Ensure push_reminders table
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS push_reminders (
+                phone TEXT NOT NULL,
+                day TEXT NOT NULL,
+                sent_at TEXT NOT NULL,
+                PRIMARY KEY (phone, day)
+            )
+        """)
+        c.commit()
+
+        if not _table_exists_raw(c, "push_subscriptions"):
+            return 0
+
+        subs_rows = c.execute(
+            "SELECT DISTINCT phone FROM push_subscriptions"
+        ).fetchall()
+
+        for (phone,) in subs_rows:
+            try:
+                # Check if already sent today
+                already = c.execute(
+                    "SELECT 1 FROM push_reminders WHERE phone=? AND day=?", (phone, today)
+                ).fetchone()
+                if already:
+                    continue
+
+                # Check if wellbeing logged today
+                has_wb = False
+                if _table_exists_raw(c, "wellbeing"):
+                    wb = c.execute(
+                        "SELECT 1 FROM wellbeing WHERE phone=? AND day=?", (phone, today)
+                    ).fetchone()
+                    has_wb = bool(wb)
+
+                if has_wb:
+                    continue  # Already logged, no reminder needed
+
+                # Get subscriptions for this user
+                subs = c.execute(
+                    "SELECT endpoint, keys_p256dh, keys_auth FROM push_subscriptions WHERE phone=?",
+                    (phone,)
+                ).fetchall()
+
+                push_data = _json.dumps({
+                    "title": "Jak minął Twój dzień?",
+                    "body": "Zaloguj samopoczucie — to zajmie 10 sekund",
+                    "url": "/wellbeing/",
+                }, ensure_ascii=False)
+
+                ok = False
+                for endpoint, p256dh, auth in subs:
+                    try:
+                        webpush(
+                            subscription_info={"endpoint": endpoint, "keys": {"p256dh": p256dh, "auth": auth}},
+                            data=push_data,
+                            vapid_private_key=vapid_private_key,
+                            vapid_claims={"sub": vapid_subject},
+                            ttl=7200,
+                            content_encoding="aes128gcm",
+                        )
+                        ok = True
+                        sent += 1
+                    except Exception:
+                        pass
+
+                if ok:
+                    c.execute(
+                        "INSERT OR REPLACE INTO push_reminders (phone, day, sent_at) VALUES (?,?,?)",
+                        (phone, today, now.isoformat()),
+                    )
+                    c.commit()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    finally:
+        c.close()
+    return sent

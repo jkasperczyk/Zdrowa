@@ -17,6 +17,7 @@ from django.core.management.base import BaseCommand
 from portal.wg_sources import (
     dashboard_summary,
     get_ai_risk_summary,
+    get_weekly_stats,
     _connect_feedback,
     _table_exists,
 )
@@ -108,3 +109,18 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"    ERR: {e}"))
 
         self.stdout.write(f"\nDone: {ok} summaries cached, {skipped} skipped, {fail} failed.")
+
+        # ── Weekly stats (fast SQLite, just log results) ──────────────
+        self.stdout.write("\nComputing weekly stats...")
+        for phone, profiles in users:
+            try:
+                ws = get_weekly_stats(db_path, phone, profiles)
+                if ws.get("avg_risk") is not None:
+                    self.stdout.write(
+                        f"  {phone}: avg_risk={ws['avg_risk']} "
+                        f"logged={ws['logged_days']}/7 "
+                        f"worst={ws.get('worst_day','?')}({ws.get('worst_score','?')})"
+                    )
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"  {phone} weekly stats error: {e}"))
+        self.stdout.write("Weekly stats done.")
